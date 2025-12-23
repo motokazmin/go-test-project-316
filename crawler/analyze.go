@@ -22,6 +22,7 @@ type urlWithDepth struct {
 
 // CrawlState содержит состояние процесса краулирования
 type CrawlState struct {
+	baseURL      *url.URL
 	visited      map[string]bool
 	visitedMutex sync.Mutex
 	queue        []urlWithDepth
@@ -99,6 +100,7 @@ func createReport(rootURL *url.URL, depth int) *Report {
 // initializeCrawlState инициализирует состояние краулирования
 func initializeCrawlState(rootURL *url.URL, workers int) *CrawlState {
 	return &CrawlState{
+		baseURL:   rootURL,
 		visited:   make(map[string]bool),
 		queue:     []urlWithDepth{{url: rootURL.String(), depth: 0}},
 		semaphore: make(chan struct{}, workers),
@@ -109,7 +111,7 @@ func initializeCrawlState(rootURL *url.URL, workers int) *CrawlState {
 func processQueueWithWorkers(ctx context.Context, opts Options, report *Report, state *CrawlState) {
 	for len(state.queue) > 0 {
 		if isContextDone(ctx) {
-			return
+			break
 		}
 
 		item := dequeueURL(state)
@@ -117,7 +119,7 @@ func processQueueWithWorkers(ctx context.Context, opts Options, report *Report, 
 			break
 		}
 
-		processURLWithWorker(ctx, opts, report, state, item.url, item.depth)
+		processURLWithWorker(ctx, opts, report, state, item.url, item.depth, state.baseURL)
 
 		applyDelay(opts.Delay)
 	}
@@ -150,7 +152,7 @@ func dequeueURL(state *CrawlState) *urlWithDepth {
 }
 
 // processURLWithWorker обрабатывает URL в отдельном worker'е
-func processURLWithWorker(ctx context.Context, opts Options, report *Report, state *CrawlState, urlStr string, depth int) {
+func processURLWithWorker(ctx context.Context, opts Options, report *Report, state *CrawlState, urlStr string, depth int, baseURL *url.URL) {
 	state.wg.Add(1)
 	state.semaphore <- struct{}{}
 
@@ -158,12 +160,18 @@ func processURLWithWorker(ctx context.Context, opts Options, report *Report, sta
 		defer state.wg.Done()
 		defer func() { <-state.semaphore }()
 
-		processSingleURL(ctx, opts, report, state, urlStr, depth)
+		processSingleURL(ctx, opts, report, state, urlStr, depth, baseURL)
 	}()
 }
 
 // processSingleURL обрабатывает один URL
-func processSingleURL(ctx context.Context, opts Options, report *Report, state *CrawlState, urlStr string, depth int) {
+func processSingleURL(ctx context.Context, opts Options, report *Report, state *CrawlState, urlStr string, depth int, baseURL *url.URL) {
+	select {
+	case <-ctx.Done():
+		return
+	default:
+	}
+
 	if isAlreadyVisited(state, urlStr) {
 		return
 	}
@@ -172,9 +180,57 @@ func processSingleURL(ctx context.Context, opts Options, report *Report, state *
 
 	page := createPageRecord(urlStr, depth)
 
-	fetchAndUpdatePage(ctx, opts, page)
+	// Сохраняем HTML для парсинга ссылок
+	var htmlContent string
+	fetchAndUpdatePage(ctx, opts, page, &htmlContent)
 
-	addPageToReport(state, report, page)
+	addPageToReport(report, page)
+
+	// Если можем углубляться и страница успешна, парсим ссылки
+	if depth < opts.Depth && page.Status == "ok" {
+		links := extractLinksFromHTML(htmlContent, parseURL(urlStr))
+		enqueueInternalLinks(state, links, baseURL, depth+1)
+	}
+}
+
+// isSameDomain проверяет что URL в пределах одного домена
+func isSameDomain(linkURL, baseURL *url.URL) bool {
+	return linkURL.Host == baseURL.Host
+}
+
+// enqueueInternalLinks добавляет внутренние ссылки в очередь (потокобезопасно)
+func enqueueInternalLinks(state *CrawlState, links []string, baseURL *url.URL, depth int) {
+	toAdd := []urlWithDepth{}
+
+	// Проверяем visited без удержания queueMutex
+	for _, link := range links {
+		linkURL, err := url.Parse(link)
+		// Проверяем что ссылка внутри домена
+		if err != nil || !isSameDomain(linkURL, baseURL) {
+			continue
+		}
+
+		normalized := linkURL.String()
+
+		state.visitedMutex.Lock()
+		if !state.visited[normalized] {
+			toAdd = append(toAdd, urlWithDepth{url: normalized, depth: depth})
+		}
+		state.visitedMutex.Unlock()
+	}
+
+	// Добавляем в очередь одной блокировкой
+	if len(toAdd) > 0 {
+		state.queueMutex.Lock()
+		state.queue = append(state.queue, toAdd...)
+		state.queueMutex.Unlock()
+	}
+}
+
+// parseURL парсит URL строку
+func parseURL(urlStr string) *url.URL {
+	u, _ := url.Parse(urlStr)
+	return u
 }
 
 // isAlreadyVisited проверяет был ли URL уже посещен (потокобезопасно)
@@ -202,8 +258,8 @@ func createPageRecord(urlStr string, depth int) *Page {
 }
 
 // fetchAndUpdatePage выполняет HTTP запрос и обновляет данные страницы
-func fetchAndUpdatePage(ctx context.Context, opts Options, page *Page) {
-	fetchWithRetries(ctx, opts, page)
+func fetchAndUpdatePage(ctx context.Context, opts Options, page *Page, htmlContent *string) {
+	fetchWithRetries(ctx, opts, page, htmlContent)
 
 	if page.HTTPStatus != 0 {
 		setStatusFromHTTPCode(page)
@@ -214,7 +270,7 @@ func fetchAndUpdatePage(ctx context.Context, opts Options, page *Page) {
 }
 
 // fetchWithRetries выполняет запрос с повторами
-func fetchWithRetries(ctx context.Context, opts Options, page *Page) {
+func fetchWithRetries(ctx context.Context, opts Options, page *Page, htmlContent *string) {
 	var lastErr error
 
 	for attempt := 0; attempt <= opts.Retries; attempt++ {
@@ -224,7 +280,7 @@ func fetchWithRetries(ctx context.Context, opts Options, page *Page) {
 			}
 		}
 
-		err := performHTTPRequest(ctx, opts, page)
+		err := performHTTPRequest(ctx, opts, page, htmlContent)
 		if err == nil {
 			lastErr = nil
 			break
@@ -250,7 +306,7 @@ func waitForRetry(ctx context.Context) bool {
 }
 
 // performHTTPRequest выполняет один HTTP запрос
-func performHTTPRequest(ctx context.Context, opts Options, page *Page) error {
+func performHTTPRequest(ctx context.Context, opts Options, page *Page, htmlContent *string) error {
 	timeoutCtx, cancel := context.WithTimeout(ctx, opts.Timeout)
 	defer cancel()
 
@@ -276,11 +332,12 @@ func performHTTPRequest(ctx context.Context, opts Options, page *Page) error {
 		if isHTMLContent(resp.Header.Get("Content-Type")) {
 			body, err := io.ReadAll(resp.Body)
 			if err == nil {
-				htmlContent := string(body)
+				content := string(body)
+				*htmlContent = content
 				// Проверяем битые ссылки
-				checkBrokenLinks(ctx, opts, page, htmlContent)
+				checkBrokenLinks(ctx, opts, page, content)
 				// Извлекаем SEO параметры
-				page.SEO = extractSEOData(htmlContent)
+				page.SEO = extractSEOData(content)
 			}
 		}
 	}
@@ -308,9 +365,9 @@ func setStatusFromHTTPCode(page *Page) {
 }
 
 // addPageToReport добавляет страницу в отчет (потокобезопасно)
-func addPageToReport(state *CrawlState, report *Report, page *Page) {
-	state.visitedMutex.Lock()
-	defer state.visitedMutex.Unlock()
+func addPageToReport(report *Report, page *Page) {
+	report.pagesMutex.Lock()
+	defer report.pagesMutex.Unlock()
 
 	report.Pages = append(report.Pages, *page)
 }
@@ -406,8 +463,9 @@ func checkBrokenLinks(ctx context.Context, opts Options, page *Page, htmlContent
 			defer wg.Done()
 			defer func() { <-semaphore }()
 
-			if isBrokenLink(ctx, opts, linkURL) {
-				brokenLink := checkLink(ctx, opts, linkURL)
+			// Один вызов checkLink
+			brokenLink, isBroken := checkLinkWithStatus(ctx, opts, linkURL)
+			if isBroken {
 				resultChan <- brokenLink
 			}
 		}(link)
@@ -429,38 +487,34 @@ func checkBrokenLinks(ctx context.Context, opts Options, page *Page, htmlContent
 	page.DiscoveredAt = time.Now().UTC().Format(time.RFC3339)
 }
 
-// isBrokenLink проверяет является ли ссылка битой (быстрая проверка)
-func isBrokenLink(ctx context.Context, opts Options, linkURL string) bool {
-	statusCode, _ := checkLinkStatus(ctx, opts, linkURL)
-	return statusCode >= 400
-}
-
-// checkLink проверяет доступность ссылки и возвращает информацию об ошибке
-func checkLink(ctx context.Context, opts Options, linkURL string) BrokenLink {
+// checkLinkWithStatus проверяет является ли ссылка битой
+func checkLinkWithStatus(ctx context.Context, opts Options, linkURL string) (BrokenLink, bool) {
 	statusCode, errMsg := checkLinkStatus(ctx, opts, linkURL)
 
+	// Проверяем что ссылка НЕ битая
+	if statusCode < 400 && errMsg == "" {
+		return BrokenLink{}, false // Не битая, не добавляем в результат
+	}
+
+	// Ссылка битая - формируем результат
 	brokenLink := BrokenLink{URL: linkURL}
 	if errMsg != "" {
 		brokenLink.Error = errMsg
-	} else if statusCode >= 400 {
+	} else {
 		brokenLink.StatusCode = statusCode
 	}
 
-	return brokenLink
+	return brokenLink, true
 }
 
-// checkLinkStatus проверяет статус ссылки
+// checkLinkStatus проверяет статус ссылки используя GET запрос
 func checkLinkStatus(ctx context.Context, opts Options, linkURL string) (int, string) {
 	timeoutCtx, cancel := context.WithTimeout(ctx, opts.Timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(timeoutCtx, http.MethodHead, linkURL, nil)
+	req, err := http.NewRequestWithContext(timeoutCtx, http.MethodGet, linkURL, nil)
 	if err != nil {
-		// Если HEAD не сработал, пробуем GET
-		req, err = http.NewRequestWithContext(timeoutCtx, http.MethodGet, linkURL, nil)
-		if err != nil {
-			return 0, err.Error()
-		}
+		return 0, err.Error()
 	}
 
 	if opts.UserAgent != "" {
@@ -473,10 +527,8 @@ func checkLinkStatus(ctx context.Context, opts Options, linkURL string) (int, st
 	}
 	defer resp.Body.Close()
 
-	// Для GET запроса читаем тело чтобы освободить соединение
-	if req.Method == http.MethodGet {
-		io.ReadAll(resp.Body)
-	}
+	// Читаем и отбрасываем тело чтобы освободить соединение
+	_, _ = io.Copy(io.Discard, resp.Body)
 
 	return resp.StatusCode, ""
 }

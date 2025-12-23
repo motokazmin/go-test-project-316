@@ -2,6 +2,7 @@ package crawler
 
 import (
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -29,6 +30,7 @@ type Report struct {
 	Depth       int    `json:"depth"`
 	GeneratedAt string `json:"generated_at"`
 	Pages       []Page `json:"pages"`
+	pagesMutex  sync.Mutex
 }
 
 // BrokenLink содержит информацию о битой ссылке
