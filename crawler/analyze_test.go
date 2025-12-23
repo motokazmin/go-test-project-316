@@ -3,6 +3,7 @@ package crawler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -226,6 +227,202 @@ func TestAnalyzeURLNormalization(t *testing.T) {
 		if report.RootURL != test.expected {
 			t.Errorf("For input %s: expected %s, got %s", test.input, test.expected, report.RootURL)
 		}
+	}
+}
+
+// TestAnalyzeServerError проверяет обработку 500 ошибки
+func TestAnalyzeServerError(t *testing.T) {
+	mockClient := &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: 500,
+				Body:       io.NopCloser(strings.NewReader("")),
+				Request:    req,
+			}, nil
+		},
+	}
+
+	opts := Options{
+		URL:        "https://example.com",
+		Depth:      0,
+		Workers:    1,
+		HTTPClient: mockClient,
+	}
+
+	result, err := Analyze(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	var report Report
+	if err := json.Unmarshal(result, &report); err != nil {
+		t.Fatalf("Failed to unmarshal report: %v", err)
+	}
+
+	page := report.Pages[0]
+	if page.HTTPStatus != 500 {
+		t.Errorf("Expected HTTP status 500, got %d", page.HTTPStatus)
+	}
+
+	if page.Status != "server_error" {
+		t.Errorf("Expected status 'server_error', got %s", page.Status)
+	}
+}
+
+// TestAnalyzeRedirect проверяет обработку redirect
+func TestAnalyzeRedirect(t *testing.T) {
+	mockClient := &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: 301,
+				Body:       io.NopCloser(strings.NewReader("")),
+				Request:    req,
+			}, nil
+		},
+	}
+
+	opts := Options{
+		URL:        "https://example.com",
+		Depth:      0,
+		Workers:    1,
+		HTTPClient: mockClient,
+	}
+
+	result, err := Analyze(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	var report Report
+	if err := json.Unmarshal(result, &report); err != nil {
+		t.Fatalf("Failed to unmarshal report: %v", err)
+	}
+
+	page := report.Pages[0]
+	if page.HTTPStatus != 301 {
+		t.Errorf("Expected HTTP status 301, got %d", page.HTTPStatus)
+	}
+
+	if page.Status != "redirect" {
+		t.Errorf("Expected status 'redirect', got %s", page.Status)
+	}
+}
+
+// TestAnalyzeNetworkError проверяет обработку сетевой ошибки
+func TestAnalyzeNetworkError(t *testing.T) {
+	mockClient := &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			return nil, fmt.Errorf("connection refused")
+		},
+	}
+
+	opts := Options{
+		URL:        "https://example.com",
+		Depth:      0,
+		Workers:    1,
+		HTTPClient: mockClient,
+	}
+
+	result, err := Analyze(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	var report Report
+	if err := json.Unmarshal(result, &report); err != nil {
+		t.Fatalf("Failed to unmarshal report: %v", err)
+	}
+
+	page := report.Pages[0]
+	if page.Status != "error" {
+		t.Errorf("Expected status 'error', got %s", page.Status)
+	}
+
+	if page.Error == "" {
+		t.Errorf("Expected error message, got empty")
+	}
+}
+
+// TestAnalyzeTimeout проверяет обработку таймаута
+func TestAnalyzeTimeout(t *testing.T) {
+	mockClient := &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			// Имитируем долгий запрос
+			time.Sleep(100 * time.Millisecond)
+			return nil, fmt.Errorf("context deadline exceeded")
+		},
+	}
+
+	opts := Options{
+		URL:        "https://example.com",
+		Depth:      0,
+		Workers:    1,
+		Timeout:    10 * time.Millisecond,
+		HTTPClient: mockClient,
+	}
+
+	result, err := Analyze(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	var report Report
+	if err := json.Unmarshal(result, &report); err != nil {
+		t.Fatalf("Failed to unmarshal report: %v", err)
+	}
+
+	page := report.Pages[0]
+	if page.Status != "error" {
+		t.Errorf("Expected status 'error' for timeout, got %s", page.Status)
+	}
+}
+
+// TestAnalyzeRetries проверяет повторные попытки при ошибке
+func TestAnalyzeRetries(t *testing.T) {
+	attemptCount := 0
+	mockClient := &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			attemptCount++
+			if attemptCount < 3 {
+				return nil, fmt.Errorf("temporary error")
+			}
+			return &http.Response{
+				StatusCode: 200,
+				Body:       io.NopCloser(strings.NewReader("")),
+				Request:    req,
+			}, nil
+		},
+	}
+
+	opts := Options{
+		URL:        "https://example.com",
+		Depth:      0,
+		Workers:    1,
+		Retries:    2,
+		HTTPClient: mockClient,
+	}
+
+	result, err := Analyze(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	var report Report
+	if err := json.Unmarshal(result, &report); err != nil {
+		t.Fatalf("Failed to unmarshal report: %v", err)
+	}
+
+	page := report.Pages[0]
+	if page.HTTPStatus != 200 {
+		t.Errorf("Expected HTTP status 200 after retries, got %d", page.HTTPStatus)
+	}
+
+	if page.Status != "ok" {
+		t.Errorf("Expected status 'ok' after retries, got %s", page.Status)
+	}
+
+	if attemptCount != 3 {
+		t.Errorf("Expected 3 attempts, got %d", attemptCount)
 	}
 }
 
