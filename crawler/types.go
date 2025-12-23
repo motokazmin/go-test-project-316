@@ -31,12 +31,21 @@ type Report struct {
 	Pages     []Page    `json:"pages"`
 }
 
+// BrokenLink содержит информацию о битой ссылке
+type BrokenLink struct {
+	URL        string `json:"url"`
+	StatusCode int    `json:"status_code,omitempty"`
+	Error      string `json:"error,omitempty"`
+}
+
 // Page содержит информацию о странице
 type Page struct {
-	URL        string `json:"url"`
-	Depth      int    `json:"depth"`
-	HTTPStatus int    `json:"http_status"`
-	Status     string `json:"status"`
-	Error      string `json:"error"`
+	URL         string       `json:"url"`
+	Depth       int          `json:"depth"`
+	HTTPStatus  int          `json:"http_status"`
+	Status      string       `json:"status"`
+	Error       string       `json:"error"`
+	BrokenLinks []BrokenLink `json:"broken_links,omitempty"`
+	DiscoveredAt string      `json:"discovered_at,omitempty"`
 }
 

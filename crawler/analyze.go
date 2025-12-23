@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/net/html"
 )
 
 // urlWithDepth представляет URL с его глубиной в дереве обхода
@@ -267,7 +270,23 @@ func performHTTPRequest(ctx context.Context, opts Options, page *Page) error {
 	defer resp.Body.Close()
 
 	page.HTTPStatus = resp.StatusCode
+
+	// Если статус OK и это HTML, проверяем битые ссылки
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if isHTMLContent(resp.Header.Get("Content-Type")) {
+			body, err := io.ReadAll(resp.Body)
+			if err == nil {
+				checkBrokenLinks(ctx, opts, page, string(body))
+			}
+		}
+	}
+
 	return nil
+}
+
+// isHTMLContent проверяет является ли контент HTML
+func isHTMLContent(contentType string) bool {
+	return strings.Contains(contentType, "text/html")
 }
 
 // setStatusFromHTTPCode определяет статус по HTTP коду
@@ -297,6 +316,165 @@ func applyDelay(delay time.Duration) {
 	if delay > 0 {
 		time.Sleep(delay)
 	}
+}
+
+// extractLinksFromHTML извлекает все ссылки из HTML содержимого
+func extractLinksFromHTML(htmlContent string, pageURL *url.URL) []string {
+	links := []string{}
+	doc, err := html.Parse(strings.NewReader(htmlContent))
+	if err != nil {
+		return links
+	}
+
+	var extract func(*html.Node)
+	extract = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "a" {
+			for _, attr := range n.Attr {
+				if attr.Key == "href" {
+					link := resolveURL(attr.Val, pageURL)
+					if link != "" {
+						links = append(links, link)
+					}
+					break
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			extract(c)
+		}
+	}
+
+	extract(doc)
+	return links
+}
+
+// resolveURL преобразует относительный URL в абсолютный
+func resolveURL(href string, baseURL *url.URL) string {
+	if href == "" {
+		return ""
+	}
+
+	// Игнорируем якоря, javascript и mailto
+	if strings.HasPrefix(href, "#") ||
+		strings.HasPrefix(href, "javascript:") ||
+		strings.HasPrefix(href, "mailto:") ||
+		strings.HasPrefix(href, "tel:") {
+		return ""
+	}
+
+	parsedURL, err := url.Parse(href)
+	if err != nil {
+		return ""
+	}
+
+	// Проверяем схему
+	if parsedURL.Scheme != "" && parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return ""
+	}
+
+	resolvedURL := baseURL.ResolveReference(parsedURL)
+	return resolvedURL.String()
+}
+
+// checkBrokenLinks проверяет доступность ссылок на странице (параллельно)
+func checkBrokenLinks(ctx context.Context, opts Options, page *Page, htmlContent string) {
+	pageURL, err := url.Parse(page.URL)
+	if err != nil {
+		return
+	}
+
+	links := extractLinksFromHTML(htmlContent, pageURL)
+	if len(links) == 0 {
+		page.DiscoveredAt = time.Now().UTC().Format(time.RFC3339)
+		return
+	}
+
+	// Параллельная проверка ссылок с ограничением по worker'ам
+	semaphore := make(chan struct{}, opts.Workers)
+	resultChan := make(chan BrokenLink, len(links))
+	var wg sync.WaitGroup
+
+	for _, link := range links {
+		wg.Add(1)
+		semaphore <- struct{}{}
+
+		go func(linkURL string) {
+			defer wg.Done()
+			defer func() { <-semaphore }()
+
+			if isBrokenLink(ctx, opts, linkURL) {
+				brokenLink := checkLink(ctx, opts, linkURL)
+				resultChan <- brokenLink
+			}
+		}(link)
+	}
+
+	// Закрываем resultChan когда все goroutine'ы завершены
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
+
+	// Собираем результаты
+	brokenLinks := []BrokenLink{}
+	for brokenLink := range resultChan {
+		brokenLinks = append(brokenLinks, brokenLink)
+	}
+
+	page.BrokenLinks = brokenLinks
+	page.DiscoveredAt = time.Now().UTC().Format(time.RFC3339)
+}
+
+// isBrokenLink проверяет является ли ссылка битой (быстрая проверка)
+func isBrokenLink(ctx context.Context, opts Options, linkURL string) bool {
+	statusCode, _ := checkLinkStatus(ctx, opts, linkURL)
+	return statusCode >= 400
+}
+
+// checkLink проверяет доступность ссылки и возвращает информацию об ошибке
+func checkLink(ctx context.Context, opts Options, linkURL string) BrokenLink {
+	statusCode, errMsg := checkLinkStatus(ctx, opts, linkURL)
+
+	brokenLink := BrokenLink{URL: linkURL}
+	if errMsg != "" {
+		brokenLink.Error = errMsg
+	} else if statusCode >= 400 {
+		brokenLink.StatusCode = statusCode
+	}
+
+	return brokenLink
+}
+
+// checkLinkStatus проверяет статус ссылки
+func checkLinkStatus(ctx context.Context, opts Options, linkURL string) (int, string) {
+	timeoutCtx, cancel := context.WithTimeout(ctx, opts.Timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(timeoutCtx, http.MethodHead, linkURL, nil)
+	if err != nil {
+		// Если HEAD не сработал, пробуем GET
+		req, err = http.NewRequestWithContext(timeoutCtx, http.MethodGet, linkURL, nil)
+		if err != nil {
+			return 0, err.Error()
+		}
+	}
+
+	if opts.UserAgent != "" {
+		req.Header.Set("User-Agent", opts.UserAgent)
+	}
+
+	resp, err := opts.HTTPClient.Do(req)
+	if err != nil {
+		return 0, err.Error()
+	}
+	defer resp.Body.Close()
+
+	// Для GET запроса читаем тело чтобы освободить соединение
+	if req.Method == http.MethodGet {
+		io.ReadAll(resp.Body)
+	}
+
+	return resp.StatusCode, ""
 }
 
 // encodeReport кодирует отчет в JSON

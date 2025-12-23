@@ -426,3 +426,137 @@ func TestAnalyzeRetries(t *testing.T) {
 	}
 }
 
+// TestBrokenLinks проверяет обнаружение битых ссылок
+func TestBrokenLinks(t *testing.T) {
+	htmlContent := `<html>
+		<body>
+			<a href="/page">Good Link</a>
+			<a href="/notfound">Broken Link</a>
+		</body>
+	</html>`
+
+	mockClient := &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			path := req.URL.Path
+
+			// Главная страница с содержимым HTML
+			if path == "" || path == "/" {
+				return &http.Response{
+					StatusCode: 200,
+					Header:     http.Header{"Content-Type": []string{"text/html"}},
+					Body:       io.NopCloser(strings.NewReader(htmlContent)),
+					Request:    req,
+				}, nil
+			}
+
+			// Рабочая ссылка
+			if path == "/page" {
+				return &http.Response{
+					StatusCode: 200,
+					Body:       io.NopCloser(strings.NewReader("")),
+					Request:    req,
+				}, nil
+			}
+
+			// Битая ссылка
+			if path == "/notfound" {
+				return &http.Response{
+					StatusCode: 404,
+					Body:       io.NopCloser(strings.NewReader("")),
+					Request:    req,
+				}, nil
+			}
+
+			return &http.Response{
+				StatusCode: 200,
+				Body:       io.NopCloser(strings.NewReader("")),
+				Request:    req,
+			}, nil
+		},
+	}
+
+	opts := Options{
+		URL:        "https://example.com",
+		Depth:      0,
+		Workers:    1,
+		HTTPClient: mockClient,
+	}
+
+	result, err := Analyze(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	var report Report
+	if err := json.Unmarshal(result, &report); err != nil {
+		t.Fatalf("Failed to unmarshal report: %v", err)
+	}
+
+	if len(report.Pages) == 0 {
+		t.Fatalf("Expected at least one page in report")
+	}
+
+	page := report.Pages[0]
+
+	// Проверяем что найдена только битая ссылка
+	if len(page.BrokenLinks) != 1 {
+		t.Errorf("Expected 1 broken link, got %d", len(page.BrokenLinks))
+	}
+
+	if len(page.BrokenLinks) > 0 {
+		brokenLink := page.BrokenLinks[0]
+		if !strings.Contains(brokenLink.URL, "/notfound") {
+			t.Errorf("Expected broken link to be /notfound, got %s", brokenLink.URL)
+		}
+
+		if brokenLink.StatusCode != 404 {
+			t.Errorf("Expected status code 404, got %d", brokenLink.StatusCode)
+		}
+	}
+}
+
+// TestIgnoredLinks проверяет что якоря и javascript игнорируются
+func TestIgnoredLinks(t *testing.T) {
+	htmlContent := `<html>
+		<body>
+			<a href="#anchor">Anchor</a>
+			<a href="javascript:void(0)">JavaScript</a>
+			<a href="mailto:test@example.com">Email</a>
+			<a href="">Empty</a>
+		</body>
+	</html>`
+
+	mockClient := &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"text/html"}},
+				Body:       io.NopCloser(strings.NewReader(htmlContent)),
+				Request:    req,
+			}, nil
+		},
+	}
+
+	opts := Options{
+		URL:        "https://example.com",
+		Depth:      0,
+		Workers:    1,
+		HTTPClient: mockClient,
+	}
+
+	result, err := Analyze(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	var report Report
+	if err := json.Unmarshal(result, &report); err != nil {
+		t.Fatalf("Failed to unmarshal report: %v", err)
+	}
+
+	page := report.Pages[0]
+	// Якоря, javascript, mailto и пустые ссылки должны быть проигнорированы
+	if len(page.BrokenLinks) > 0 {
+		t.Errorf("Expected no broken links for ignored patterns, got %d", len(page.BrokenLinks))
+	}
+}
