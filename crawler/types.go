@@ -25,10 +25,10 @@ type Options struct {
 
 // Report содержит результат обхода сайта
 type Report struct {
-	RootURL   string    `json:"root_url"`
-	Depth     int       `json:"depth"`
-	GeneratedAt string  `json:"generated_at"`
-	Pages     []Page    `json:"pages"`
+	RootURL     string `json:"root_url"`
+	Depth       int    `json:"depth"`
+	GeneratedAt string `json:"generated_at"`
+	Pages       []Page `json:"pages"`
 }
 
 // BrokenLink содержит информацию о битой ссылке
@@ -38,14 +38,23 @@ type BrokenLink struct {
 	Error      string `json:"error,omitempty"`
 }
 
-// Page содержит информацию о странице
-type Page struct {
-	URL         string       `json:"url"`
-	Depth       int          `json:"depth"`
-	HTTPStatus  int          `json:"http_status"`
-	Status      string       `json:"status"`
-	Error       string       `json:"error"`
-	BrokenLinks []BrokenLink `json:"broken_links,omitempty"`
-	DiscoveredAt string      `json:"discovered_at,omitempty"`
+// SEO содержит базовые SEO параметры страницы
+type SEO struct {
+	HasTitle       bool    `json:"has_title"`
+	Title          *string `json:"title"`
+	HasDescription bool    `json:"has_description"`
+	Description    *string `json:"description"`
+	HasH1          bool    `json:"has_h1"`
 }
 
+// Page содержит информацию о странице
+type Page struct {
+	URL          string       `json:"url"`
+	Depth        int          `json:"depth"`
+	HTTPStatus   int          `json:"http_status"`
+	Status       string       `json:"status"`
+	Error        string       `json:"error"`
+	BrokenLinks  []BrokenLink `json:"broken_links,omitempty"`
+	DiscoveredAt string       `json:"discovered_at,omitempty"`
+	SEO          *SEO         `json:"seo,omitempty"`
+}

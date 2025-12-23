@@ -271,12 +271,16 @@ func performHTTPRequest(ctx context.Context, opts Options, page *Page) error {
 
 	page.HTTPStatus = resp.StatusCode
 
-	// Если статус OK и это HTML, проверяем битые ссылки
+	// Если статус OK и это HTML, парсим содержимое
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		if isHTMLContent(resp.Header.Get("Content-Type")) {
 			body, err := io.ReadAll(resp.Body)
 			if err == nil {
-				checkBrokenLinks(ctx, opts, page, string(body))
+				htmlContent := string(body)
+				// Проверяем битые ссылки
+				checkBrokenLinks(ctx, opts, page, htmlContent)
+				// Извлекаем SEO параметры
+				page.SEO = extractSEOData(htmlContent)
 			}
 		}
 	}
@@ -475,6 +479,90 @@ func checkLinkStatus(ctx context.Context, opts Options, linkURL string) (int, st
 	}
 
 	return resp.StatusCode, ""
+}
+
+// extractSEOData извлекает SEO параметры из HTML содержимого
+func extractSEOData(htmlContent string) *SEO {
+	seo := &SEO{}
+
+	doc, err := html.Parse(strings.NewReader(htmlContent))
+	if err != nil {
+		return seo
+	}
+
+	// Ищем title
+	var findTitle func(*html.Node)
+	findTitle = func(n *html.Node) {
+		if !seo.HasTitle && n.Type == html.ElementNode && n.Data == "title" {
+			seo.HasTitle = true
+			if n.FirstChild != nil && n.FirstChild.Type == html.TextNode {
+				title := strings.TrimSpace(n.FirstChild.Data)
+				seo.Title = &title
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			findTitle(c)
+		}
+	}
+
+	// Ищем meta description и h1
+	var findMetaAndHeadings func(*html.Node)
+	findMetaAndHeadings = func(n *html.Node) {
+		if n.Type == html.ElementNode {
+			if !seo.HasDescription && n.Data == "meta" {
+				name := ""
+				content := ""
+				for _, attr := range n.Attr {
+					if attr.Key == "name" && attr.Val == "description" {
+						name = "description"
+					}
+					if attr.Key == "content" {
+						content = attr.Val
+					}
+				}
+				if name == "description" {
+					seo.HasDescription = true
+					seo.Description = &content
+				}
+			}
+
+			if !seo.HasH1 && n.Data == "h1" {
+				text := extractTextContent(n)
+				seo.HasH1 = text != ""
+			}
+		}
+
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			findMetaAndHeadings(c)
+		}
+	}
+
+	findTitle(doc)
+	findMetaAndHeadings(doc)
+
+	return seo
+}
+
+// extractTextContent рекурсивно извлекает текстовое содержимое узла
+func extractTextContent(n *html.Node) string {
+	if n == nil {
+		return ""
+	}
+
+	var text strings.Builder
+
+	var extract func(*html.Node)
+	extract = func(node *html.Node) {
+		if node.Type == html.TextNode {
+			text.WriteString(strings.TrimSpace(node.Data))
+		}
+		for c := node.FirstChild; c != nil; c = c.NextSibling {
+			extract(c)
+		}
+	}
+
+	extract(n)
+	return strings.TrimSpace(text.String())
 }
 
 // encodeReport кодирует отчет в JSON

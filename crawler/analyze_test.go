@@ -560,3 +560,203 @@ func TestIgnoredLinks(t *testing.T) {
 		t.Errorf("Expected no broken links for ignored patterns, got %d", len(page.BrokenLinks))
 	}
 }
+
+// TestSEOComplete проверяет извлечение всех SEO параметров
+func TestSEOComplete(t *testing.T) {
+	htmlContent := `<html>
+	<head>
+		<title>Test Page Title</title>
+		<meta name="description" content="This is a test description">
+	</head>
+	<body>
+		<h1>Main Heading</h1>
+	</body>
+	</html>`
+
+	mockClient := &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"text/html"}},
+				Body:       io.NopCloser(strings.NewReader(htmlContent)),
+				Request:    req,
+			}, nil
+		},
+	}
+
+	opts := Options{
+		URL:        "https://example.com",
+		Depth:      0,
+		Workers:    1,
+		HTTPClient: mockClient,
+	}
+
+	result, err := Analyze(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	var report Report
+	if err := json.Unmarshal(result, &report); err != nil {
+		t.Fatalf("Failed to unmarshal report: %v", err)
+	}
+
+	page := report.Pages[0]
+	if page.SEO == nil {
+		t.Fatalf("Expected SEO data, got nil")
+	}
+
+	if !page.SEO.HasTitle {
+		t.Errorf("Expected has_title to be true")
+	}
+
+	if page.SEO.Title == nil || *page.SEO.Title != "Test Page Title" {
+		got := ""
+		if page.SEO.Title != nil {
+			got = *page.SEO.Title
+		}
+		t.Errorf("Expected title 'Test Page Title', got '%s'", got)
+	}
+
+	if !page.SEO.HasDescription {
+		t.Errorf("Expected has_description to be true")
+	}
+
+	if page.SEO.Description == nil || *page.SEO.Description != "This is a test description" {
+		got := ""
+		if page.SEO.Description != nil {
+			got = *page.SEO.Description
+		}
+		t.Errorf("Expected description 'This is a test description', got '%s'", got)
+	}
+
+	if !page.SEO.HasH1 {
+		t.Errorf("Expected has_h1 to be true")
+	}
+}
+
+// TestSEOMissing проверяет отсутствие SEO параметров
+func TestSEOMissing(t *testing.T) {
+	htmlContent := `<html>
+	<head>
+	</head>
+	<body>
+		<p>No title, description or h1</p>
+	</body>
+	</html>`
+
+	mockClient := &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"text/html"}},
+				Body:       io.NopCloser(strings.NewReader(htmlContent)),
+				Request:    req,
+			}, nil
+		},
+	}
+
+	opts := Options{
+		URL:        "https://example.com",
+		Depth:      0,
+		Workers:    1,
+		HTTPClient: mockClient,
+	}
+
+	result, err := Analyze(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	var report Report
+	if err := json.Unmarshal(result, &report); err != nil {
+		t.Fatalf("Failed to unmarshal report: %v", err)
+	}
+
+	page := report.Pages[0]
+	if page.SEO == nil {
+		t.Fatalf("Expected SEO data, got nil")
+	}
+
+	if page.SEO.HasTitle {
+		t.Errorf("Expected has_title to be false")
+	}
+
+	if page.SEO.Title != nil {
+		t.Errorf("Expected title to be nil")
+	}
+
+	if page.SEO.HasDescription {
+		t.Errorf("Expected has_description to be false")
+	}
+
+	if page.SEO.Description != nil {
+		t.Errorf("Expected description to be nil")
+	}
+
+	if page.SEO.HasH1 {
+		t.Errorf("Expected has_h1 to be false")
+	}
+}
+
+// TestSEOHTMLEntities проверяет корректную обработку HTML сущностей
+func TestSEOHTMLEntities(t *testing.T) {
+	htmlContent := `<html>
+	<head>
+		<title>Cats &amp; Dogs</title>
+		<meta name="description" content="Benefits of &quot;good&quot; pet food">
+	</head>
+	<body>
+		<h1>Pet &lt;Care&gt;</h1>
+	</body>
+	</html>`
+
+	mockClient := &MockHTTPClient{
+		DoFunc: func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"text/html"}},
+				Body:       io.NopCloser(strings.NewReader(htmlContent)),
+				Request:    req,
+			}, nil
+		},
+	}
+
+	opts := Options{
+		URL:        "https://example.com",
+		Depth:      0,
+		Workers:    1,
+		HTTPClient: mockClient,
+	}
+
+	result, err := Analyze(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	var report Report
+	if err := json.Unmarshal(result, &report); err != nil {
+		t.Fatalf("Failed to unmarshal report: %v", err)
+	}
+
+	page := report.Pages[0]
+	if page.SEO == nil {
+		t.Fatalf("Expected SEO data, got nil")
+	}
+
+	if page.SEO.Title == nil || *page.SEO.Title != "Cats & Dogs" {
+		got := ""
+		if page.SEO.Title != nil {
+			got = *page.SEO.Title
+		}
+		t.Errorf("Expected title 'Cats & Dogs', got '%s'", got)
+	}
+
+	if page.SEO.Description == nil || *page.SEO.Description != "Benefits of \"good\" pet food" {
+		got := ""
+		if page.SEO.Description != nil {
+			got = *page.SEO.Description
+		}
+		t.Errorf("Expected description with decoded quotes, got '%s'", got)
+	}
+}
