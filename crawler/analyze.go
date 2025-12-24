@@ -26,6 +26,7 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 	seoExtractor := NewSEOExtractor()
 	linkChecker := NewLinkChecker(fetcher, opts.Workers)
 	reportBuilder := NewReportBuilder(rootURL, opts.Depth)
+	assetChecker := NewAssetChecker(fetcher, opts.Workers)
 
 	// 4. Создаем crawler
 	crawler := &Crawler{
@@ -34,6 +35,7 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 		parser:        parser,
 		seoExtractor:  seoExtractor,
 		linkChecker:   linkChecker,
+		assetChecker:  assetChecker,
 		reportBuilder: reportBuilder,
 		maxDepth:      opts.Depth,
 	}
@@ -52,6 +54,7 @@ type Crawler struct {
 	parser        *HTMLParser
 	seoExtractor  *SEOExtractor
 	linkChecker   *LinkChecker
+	assetChecker  *AssetChecker
 	reportBuilder *ReportBuilder
 	maxDepth      int
 }
@@ -120,15 +123,19 @@ func (c *Crawler) processSingleURL(ctx context.Context, urlStr string, depth int
 	SetPageStatus(&page)
 
 	if result.HTMLContent != "" {
+		pageURL, _ := url.Parse(urlStr)
+
 		// Извлекаем SEO данные
 		page.SEO = c.seoExtractor.Extract(result.HTMLContent)
 
 		// Извлекаем ссылки
-		pageURL, _ := url.Parse(urlStr)
 		links := c.parser.ExtractLinks(result.HTMLContent, pageURL)
 
 		// Проверяем битые ссылки
 		page.BrokenLinks, page.DiscoveredAt = c.linkChecker.CheckLinks(ctx, links)
+
+		// Проверяем ассеты
+		page.Assets = c.assetChecker.CheckAssets(ctx, result.HTMLContent, pageURL)
 
 		// Добавляем внутренние ссылки в очередь
 		if depth < c.maxDepth && page.Status == "ok" {

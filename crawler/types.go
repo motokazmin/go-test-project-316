@@ -58,6 +58,25 @@ type Page struct {
 	BrokenLinks  []BrokenLink `json:"broken_links,omitempty"`
 	DiscoveredAt string       `json:"discovered_at,omitempty"`
 	SEO          *SEO         `json:"seo,omitempty"`
+	Assets       []Asset      `json:"assets,omitempty"`
+}
+
+// Asset содержит информацию об ассете (картинка, скрипт, стиль)
+type Asset struct {
+	URL        string `json:"url"`
+	Type       string `json:"type"`
+	StatusCode int    `json:"status_code"`
+	SizeBytes  int64  `json:"size_bytes"`
+	Error      string `json:"error,omitempty"`
+}
+
+// AssetResult содержит результат проверки ассета
+type AssetResult struct {
+	URL        string
+	Type       string
+	StatusCode int
+	SizeBytes  int64
+	Error      error
 }
 
 // ========== Внутренние типы для управления состоянием ==========
