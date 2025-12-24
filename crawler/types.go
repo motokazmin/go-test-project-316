@@ -2,7 +2,6 @@ package crawler
 
 import (
 	"net/http"
-	"sync"
 	"time"
 )
 
@@ -30,7 +29,6 @@ type Report struct {
 	Depth       int    `json:"depth"`
 	GeneratedAt string `json:"generated_at"`
 	Pages       []Page `json:"pages"`
-	pagesMutex  sync.Mutex
 }
 
 // BrokenLink содержит информацию о битой ссылке
@@ -47,6 +45,7 @@ type SEO struct {
 	HasDescription bool    `json:"has_description"`
 	Description    *string `json:"description"`
 	HasH1          bool    `json:"has_h1"`
+	H1             *string `json:"h1,omitempty"`
 }
 
 // Page содержит информацию о странице
@@ -55,8 +54,23 @@ type Page struct {
 	Depth        int          `json:"depth"`
 	HTTPStatus   int          `json:"http_status"`
 	Status       string       `json:"status"`
-	Error        string       `json:"error"`
+	Error        string       `json:"error,omitempty"`
 	BrokenLinks  []BrokenLink `json:"broken_links,omitempty"`
 	DiscoveredAt string       `json:"discovered_at,omitempty"`
 	SEO          *SEO         `json:"seo,omitempty"`
+}
+
+// ========== Внутренние типы для управления состоянием ==========
+
+// urlWithDepth представляет URL с его глубиной в дереве обхода
+type urlWithDepth struct {
+	url   string
+	depth int
+}
+
+// FetchResult содержит результат HTTP-запроса
+type FetchResult struct {
+	StatusCode  int
+	HTMLContent string
+	Error       error
 }
