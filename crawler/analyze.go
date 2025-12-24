@@ -29,6 +29,7 @@ type CrawlState struct {
 	queueMutex   sync.Mutex
 	semaphore    chan struct{}
 	wg           sync.WaitGroup
+	rateLimiter  *RateLimiter
 }
 
 // Analyze анализирует структуру веб-сайта
@@ -41,7 +42,11 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 	}
 
 	report := createReport(rootURL, opts.Depth)
-	state := initializeCrawlState(rootURL, opts.Workers)
+
+	// Создаем rate limiter
+	rateLimiter := NewRateLimiter(ctx, opts.Delay)
+
+	state := initializeCrawlState(rootURL, opts.Workers, rateLimiter)
 
 	processQueueWithWorkers(ctx, opts, report, state)
 
@@ -98,12 +103,13 @@ func createReport(rootURL *url.URL, depth int) *Report {
 }
 
 // initializeCrawlState инициализирует состояние краулирования
-func initializeCrawlState(rootURL *url.URL, workers int) *CrawlState {
+func initializeCrawlState(rootURL *url.URL, workers int, rateLimiter *RateLimiter) *CrawlState {
 	return &CrawlState{
-		baseURL:   rootURL,
-		visited:   make(map[string]bool),
-		queue:     []urlWithDepth{{url: rootURL.String(), depth: 0}},
-		semaphore: make(chan struct{}, workers),
+		baseURL:     rootURL,
+		visited:     make(map[string]bool),
+		queue:       []urlWithDepth{{url: rootURL.String(), depth: 0}},
+		semaphore:   make(chan struct{}, workers),
+		rateLimiter: rateLimiter,
 	}
 }
 
@@ -119,9 +125,12 @@ func processQueueWithWorkers(ctx context.Context, opts Options, report *Report, 
 			break
 		}
 
-		processURLWithWorker(ctx, opts, report, state, item.url, item.depth, state.baseURL)
+		// Применяем rate limiting
+		if !state.rateLimiter.Wait(ctx) {
+			break
+		}
 
-		applyDelay(opts.Delay)
+		processURLWithWorker(ctx, opts, report, state, item.url, item.depth, state.baseURL)
 	}
 
 	state.wg.Wait()
@@ -370,13 +379,6 @@ func addPageToReport(report *Report, page *Page) {
 	defer report.pagesMutex.Unlock()
 
 	report.Pages = append(report.Pages, *page)
-}
-
-// applyDelay применяет задержку если она установлена
-func applyDelay(delay time.Duration) {
-	if delay > 0 {
-		time.Sleep(delay)
-	}
 }
 
 // extractLinksFromHTML извлекает все ссылки из HTML содержимого
