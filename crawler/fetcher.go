@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// Fetcher отвечает за выполнение HTTP-запросов
+// Fetcher отвечает за выполнение HTTP-запросов с retry логикой
 type Fetcher struct {
 	client      HTTPClient
 	userAgent   string
@@ -29,30 +29,64 @@ func NewFetcher(opts Options, rateLimiter *RateLimiter) *Fetcher {
 }
 
 // Fetch выполняет HTTP-запрос с retry логикой и rate limiting
+// Между попытками задержка 100ms
 func (f *Fetcher) Fetch(ctx context.Context, url string) FetchResult {
-	var lastErr error
-
 	for attempt := 0; attempt <= f.maxRetries; attempt++ {
+		// Проверяем отмену контекста
+		if ctx.Err() != nil {
+			return FetchResult{Error: ctx.Err()}
+		}
+
+		// Задержка перед повторной попыткой (не для первой)
 		if attempt > 0 {
 			if !f.waitForRetry(ctx) {
 				return FetchResult{Error: ctx.Err()}
 			}
 		}
 
+		// Выполняем запрос
 		result := f.performRequest(ctx, url)
-		if result.Error == nil {
+
+		// Успех - возвращаем результат
+		if result.Error == nil && result.StatusCode < 500 && result.StatusCode != 429 {
 			return result
 		}
 
-		lastErr = result.Error
+		// Последняя попытка или не требует retry - возвращаем как есть
+		if attempt == f.maxRetries || !f.shouldRetry(result) {
+			return result
+		}
 	}
 
-	return FetchResult{Error: lastErr}
+	// Недостижимый код (цикл всегда возвращает внутри)
+	return FetchResult{}
+}
+
+// shouldRetry определяет нужен ли retry для данного результата
+func (f *Fetcher) shouldRetry(result FetchResult) bool {
+	// Сетевая ошибка - всегда retry
+	if result.Error != nil {
+		return true
+	}
+
+	// HTTP 429 Too Many Requests - retry
+	if result.StatusCode == 429 {
+		return true
+	}
+
+	// HTTP 5xx Server Error - retry
+	if result.StatusCode >= 500 && result.StatusCode < 600 {
+		return true
+	}
+
+	// Остальные статусы - не retry
+	// (4xx кроме 429 - это клиентские ошибки, нет смысла повторять)
+	return false
 }
 
 // performRequest выполняет один HTTP-запрос
 func (f *Fetcher) performRequest(ctx context.Context, urlStr string) FetchResult {
-	// ✅ КРИТИЧНО: Rate limiting перед HTTP-запросом
+	// Rate limiting перед HTTP-запросом
 	if f.rateLimiter != nil {
 		if !f.rateLimiter.Wait(ctx) {
 			return FetchResult{Error: ctx.Err()}
@@ -92,7 +126,7 @@ func (f *Fetcher) performRequest(ctx context.Context, urlStr string) FetchResult
 	return result
 }
 
-// waitForRetry ждет перед повтором
+// waitForRetry ждет 100ms перед повторной попыткой
 func (f *Fetcher) waitForRetry(ctx context.Context) bool {
 	select {
 	case <-ctx.Done():

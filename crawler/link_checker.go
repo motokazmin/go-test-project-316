@@ -21,6 +21,7 @@ func NewLinkChecker(fetcher *Fetcher, workers int) *LinkChecker {
 }
 
 // CheckLinks проверяет список ссылок параллельно
+// Возвращает только битые ссылки (после всех retry)
 func (lc *LinkChecker) CheckLinks(ctx context.Context, links []string) ([]BrokenLink, string) {
 	if len(links) == 0 {
 		return nil, time.Now().UTC().Format(time.RFC3339)
@@ -38,6 +39,7 @@ func (lc *LinkChecker) CheckLinks(ctx context.Context, links []string) ([]Broken
 			defer wg.Done()
 			defer func() { <-semaphore }()
 
+			// Проверяем ссылку с retry
 			if brokenLink, isBroken := lc.checkSingleLink(ctx, linkURL); isBroken {
 				resultChan <- brokenLink
 			}
@@ -58,13 +60,17 @@ func (lc *LinkChecker) CheckLinks(ctx context.Context, links []string) ([]Broken
 }
 
 // checkSingleLink проверяет одну ссылку
+// Возвращает результат ПОСЛЕДНЕЙ попытки
 func (lc *LinkChecker) checkSingleLink(ctx context.Context, linkURL string) (BrokenLink, bool) {
-	result := lc.fetcher.performRequest(ctx, linkURL)
+	// Fetch автоматически выполняет retry
+	result := lc.fetcher.Fetch(ctx, linkURL)
 
-	if result.StatusCode < 400 && result.Error == nil {
+	// Ссылка работает
+	if result.StatusCode >= 200 && result.StatusCode < 400 && result.Error == nil {
 		return BrokenLink{}, false
 	}
 
+	// Ссылка битая - возвращаем результат последней попытки
 	brokenLink := BrokenLink{URL: linkURL}
 	if result.Error != nil {
 		brokenLink.Error = result.Error.Error()
