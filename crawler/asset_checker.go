@@ -26,6 +26,12 @@ func NewAssetChecker(fetcher *Fetcher, workers int) *AssetChecker {
 	}
 }
 
+// assetWithIndex содержит ассет и его исходный индекс
+type assetWithIndex struct {
+	asset Asset
+	index int
+}
+
 // CheckAssets проверяет все ассеты на странице
 func (ac *AssetChecker) CheckAssets(ctx context.Context, htmlContent string, pageURL *url.URL) []Asset {
 	// Извлекаем ассеты из HTML
@@ -35,22 +41,22 @@ func (ac *AssetChecker) CheckAssets(ctx context.Context, htmlContent string, pag
 		return []Asset{}
 	}
 
-	// Проверяем ассеты параллельно с учетом кэша
+	// Проверяем ассеты параллельно с учетом кэша и сохранением порядка
 	semaphore := make(chan struct{}, ac.workers)
-	resultChan := make(chan Asset, len(assetURLs))
+	resultChan := make(chan assetWithIndex, len(assetURLs))
 	var wg sync.WaitGroup
 
-	for _, assetInfo := range assetURLs {
+	for i, assetInfo := range assetURLs {
 		wg.Add(1)
 		semaphore <- struct{}{}
 
-		go func(url, assetType string) {
+		go func(index int, url, assetType string) {
 			defer wg.Done()
 			defer func() { <-semaphore }()
 
 			asset := ac.checkSingleAsset(ctx, url, assetType)
-			resultChan <- asset
-		}(assetInfo.url, assetInfo.assetType)
+			resultChan <- assetWithIndex{asset: asset, index: index}
+		}(i, assetInfo.url, assetInfo.assetType)
 	}
 
 	go func() {
@@ -58,10 +64,16 @@ func (ac *AssetChecker) CheckAssets(ctx context.Context, htmlContent string, pag
 		close(resultChan)
 	}()
 
-	// Собираем результаты
-	assets := []Asset{}
-	for asset := range resultChan {
-		assets = append(assets, asset)
+	// Собираем результаты в map для сохранения порядка
+	results := make(map[int]Asset)
+	for result := range resultChan {
+		results[result.index] = result.asset
+	}
+
+	// Восстанавливаем исходный порядок
+	assets := make([]Asset, len(assetURLs))
+	for i := 0; i < len(assetURLs); i++ {
+		assets[i] = results[i]
 	}
 
 	return assets
