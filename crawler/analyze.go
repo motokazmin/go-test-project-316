@@ -61,19 +61,32 @@ type Crawler struct {
 
 // Run запускает процесс обхода
 func (c *Crawler) Run(ctx context.Context) {
-	for !c.state.Queue.IsEmpty() {
+	for {
+		// Проверяем контекст
 		if ctx.Err() != nil {
 			break
 		}
 
+		// Берём URL из очереди
 		item := c.state.Queue.Dequeue()
+
+		// Если очереди пуста, ждём завершения всех воркеров
 		if item == nil {
-			break
+			c.state.WG.Wait()
+
+			// После завершения воркеров проверяем очередь снова
+			// (воркеры могли добавить новые URL)
+			if c.state.Queue.IsEmpty() {
+				break
+			}
+			continue
 		}
 
+		// Обрабатываем URL
 		c.processURLWithWorker(ctx, item.url, item.depth)
 	}
 
+	// Финальное ожидание завершения всех воркеров
 	c.state.WG.Wait()
 }
 
