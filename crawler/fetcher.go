@@ -113,9 +113,9 @@ func (f *Fetcher) performRequest(ctx context.Context, urlStr string) FetchResult
 
 	result := FetchResult{StatusCode: resp.StatusCode}
 
-	// Читаем HTML контент только для успешных ответов
+	// Читаем HTML/XML контент только для успешных ответов
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		if isHTMLContent(resp.Header.Get("Content-Type")) {
+		if isTextContent(resp.Header.Get("Content-Type")) {
 			body, err := io.ReadAll(resp.Body)
 			if err == nil {
 				result.HTMLContent = string(body)
@@ -136,7 +136,17 @@ func (f *Fetcher) waitForRetry(ctx context.Context) bool {
 	}
 }
 
-// isHTMLContent проверяет тип контента
-func isHTMLContent(contentType string) bool {
-	return strings.Contains(contentType, "text/html")
+// isTextContent проверяет тип контента (HTML или XML)
+func isTextContent(contentType string) bool {
+	// Проверяем HTML
+	if strings.Contains(contentType, "text/html") {
+		return true
+	}
+
+	// Проверяем XML (различные типы)
+	if strings.Contains(contentType, "xml") {
+		return true
+	}
+
+	return false
 }
