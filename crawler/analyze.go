@@ -117,6 +117,9 @@ func (c *Crawler) processSingleURL(ctx context.Context, urlStr string, depth int
 		page.Error = result.Error.Error()
 		SetPageStatus(&page)
 		page.DiscoveredAt = time.Now().UTC().Format(time.RFC3339)
+		page.SEO = &SEO{}
+		page.BrokenLinks = []BrokenLink{}
+		page.Assets = []Asset{}
 		c.reportBuilder.AddPage(page)
 		return
 	}
@@ -145,6 +148,9 @@ func (c *Crawler) processSingleURL(ctx context.Context, urlStr string, depth int
 	} else {
 		// Если нет HTML контента, но запрос был успешен
 		page.DiscoveredAt = time.Now().UTC().Format(time.RFC3339)
+		page.SEO = &SEO{}
+		page.BrokenLinks = []BrokenLink{}
+		page.Assets = []Asset{}
 	}
 
 	c.reportBuilder.AddPage(page)
