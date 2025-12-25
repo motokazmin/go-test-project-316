@@ -34,8 +34,8 @@ type Report struct {
 // BrokenLink содержит информацию о битой ссылке
 type BrokenLink struct {
 	URL        string `json:"url"`
-	StatusCode int    `json:"status_code,omitempty"`
-	Error      string `json:"error,omitempty"`
+	StatusCode int    `json:"status_code"`
+	Error      string `json:"error"`
 }
 
 // SEO содержит базовые SEO параметры страницы
@@ -54,11 +54,11 @@ type Page struct {
 	Depth        int          `json:"depth"`
 	HTTPStatus   int          `json:"http_status"`
 	Status       string       `json:"status"`
-	Error        string       `json:"error,omitempty"`
-	BrokenLinks  []BrokenLink `json:"broken_links,omitempty"`
-	DiscoveredAt string       `json:"discovered_at,omitempty"`
-	SEO          *SEO         `json:"seo,omitempty"`
-	Assets       []Asset      `json:"assets,omitempty"`
+	Error        string       `json:"error"`
+	BrokenLinks  []BrokenLink `json:"broken_links"`
+	DiscoveredAt string       `json:"discovered_at"`
+	SEO          *SEO         `json:"seo"`
+	Assets       []Asset      `json:"assets"`
 }
 
 // Asset содержит информацию об ассете (картинка, скрипт, стиль)
@@ -67,7 +67,7 @@ type Asset struct {
 	Type       string `json:"type"`
 	StatusCode int    `json:"status_code"`
 	SizeBytes  int64  `json:"size_bytes"`
-	Error      string `json:"error,omitempty"`
+	Error      string `json:"error"`
 }
 
 // AssetResult содержит результат проверки ассета

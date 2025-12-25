@@ -83,38 +83,88 @@ bin/hexlet-go-crawler https://example.com --user-agent "MyBot/1.0" --delay 2s
 {
   "root_url": "https://example.com",
   "depth": 1,
-  "generated_at": "2024-05-18T12:34:56Z",
+  "generated_at": "2024-06-01T12:34:56Z",
   "pages": [
     {
       "url": "https://example.com",
       "depth": 0,
       "http_status": 200,
       "status": "ok",
-      "error": ""
+      "error": "",
+      "seo": {
+        "has_title": true,
+        "title": "Example title",
+        "has_description": true,
+        "description": "Example description",
+        "has_h1": true
+      },
+      "broken_links": [
+        {
+          "url": "https://example.com/missing",
+          "status_code": 404,
+          "error": "Not Found"
+        }
+      ],
+      "assets": [
+        {
+          "url": "https://example.com/static/logo.png",
+          "type": "image",
+          "status_code": 200,
+          "size_bytes": 12345,
+          "error": ""
+        }
+      ],
+      "discovered_at": "2024-06-01T12:34:56Z"
     }
   ]
 }
 ```
 
-### Поля отчета:
-- `root_url` - корневой URL анализируемого сайта
-- `depth` - максимальная глубина обхода
-- `generated_at` - время генерации отчета в формате RFC3339
-- `pages` - массив информации о проанализированных страницах
+### Поля корневого отчета
 
-### Поля страницы:
-- `url` - адрес страницы
-- `depth` - глубина страницы относительно корня
-- `http_status` - HTTP статус код (200, 404 и т.д.)
-- `status` - статус обработки (ok, redirect, client_error, server_error, error)
-- `error` - текст ошибки, если она произошла
+- **`root_url`** (string) - Корневой URL анализируемого сайта
+- **`depth`** (integer) - Максимальная глубина обхода (0-based)
+- **`generated_at`** (string) - Время генерации отчета в формате RFC3339 (ISO 8601)
+- **`pages`** (array) - Массив объектов Page с информацией о проанализированных страницах
 
-## Разработка
+### Поля страницы (Page)
 
-Все команды доступны через Makefile:
+- **`url`** (string) - Полный адрес страницы
+- **`depth`** (integer) - Глубина страницы относительно корня (0 = корневая)
+- **`http_status`** (integer) - HTTP статус код (200, 301, 404, 500 и т.д.)
+- **`status`** (string) - Статус обработки: `ok`, `redirect`, `client_error`, `server_error`, `error`
+- **`error`** (string) - Текст ошибки (если она произошла), пусто при успехе
+- **`seo`** (object) - SEO параметры страницы (см. Поля SEO)
+- **`broken_links`** (array) - Массив обнаруженных битых ссылок (см. Поля BrokenLink)
+- **`assets`** (array) - Массив статических ресурсов (см. Поля Asset)
+- **`discovered_at`** (string) - Время обнаружения страницы в формате RFC3339
 
-- `make build` - Построить проект
-- `make test` - Запустить тесты
-- `make run URL=<url>` - Запустить краулер
-- `make clean` - Удалить артефакты сборки
-- `make help` - Показать справку
+### Поля SEO
+
+- **`has_title`** (boolean) - Наличие тега `<title>` на странице
+- **`title`** (string or null) - Содержимое тега `<title>` (null если отсутствует)
+- **`has_description`** (boolean) - Наличие мета-тега `description`
+- **`description`** (string or null) - Содержимое атрибута `content` мета-тега `description` (null если отсутствует)
+- **`has_h1`** (boolean) - Наличие заголовка `<h1>` на странице
+
+### Поля BrokenLink (битой ссылки)
+
+- **`url`** (string) - URL битой ссылки
+- **`status_code`** (integer) - HTTP статус код ошибки (4xx или 5xx), опционально
+- **`error`** (string) - Текст ошибки сети или timeout, опционально
+
+### Поля Asset (статического ресурса)
+
+- **`url`** (string) - URL ресурса
+- **`type`** (string) - Тип ресурса: `image`, `script`, `stylesheet`, `other`
+- **`status_code`** (integer) - HTTP статус код (200 при успехе)
+- **`size_bytes`** (integer) - Размер ресурса в байтах
+- **`error`** (string) - Текст ошибки (если произошла), пусто при успехе
+
+### Значения статуса страницы
+
+- **`ok`** - успешно обработана (2xx статус)
+- **`redirect`** - переадресация (3xx статус)
+- **`client_error`** - ошибка клиента (4xx статус)
+- **`server_error`** - ошибка сервера (5xx статус)
+- **`error`** - ошибка при обработке (сеть, таймаут и т.д.)

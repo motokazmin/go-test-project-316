@@ -27,6 +27,13 @@ func NewReportBuilder(rootURL *url.URL, depth int) *ReportBuilder {
 
 // AddPage добавляет страницу в отчет (потокобезопасно)
 func (rb *ReportBuilder) AddPage(page Page) {
+	if page.BrokenLinks == nil {
+		page.BrokenLinks = []BrokenLink{}
+	}
+	if page.Assets == nil {
+		page.Assets = []Asset{}
+	}
+
 	rb.mu.Lock()
 	defer rb.mu.Unlock()
 	rb.report.Pages = append(rb.report.Pages, page)

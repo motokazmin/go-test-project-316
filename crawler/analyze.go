@@ -116,6 +116,7 @@ func (c *Crawler) processSingleURL(ctx context.Context, urlStr string, depth int
 	if result.Error != nil {
 		page.Error = result.Error.Error()
 		SetPageStatus(&page)
+		page.DiscoveredAt = time.Now().UTC().Format(time.RFC3339)
 		c.reportBuilder.AddPage(page)
 		return
 	}
@@ -141,6 +142,9 @@ func (c *Crawler) processSingleURL(ctx context.Context, urlStr string, depth int
 		if depth < c.maxDepth && page.Status == "ok" {
 			c.enqueueInternalLinks(links, depth+1)
 		}
+	} else {
+		// Если нет HTML контента, но запрос был успешен
+		page.DiscoveredAt = time.Now().UTC().Format(time.RFC3339)
 	}
 
 	c.reportBuilder.AddPage(page)
