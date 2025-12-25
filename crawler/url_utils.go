@@ -30,6 +30,23 @@ func NormalizeURLString(urlStr string) string {
 	return urlStr
 }
 
+// NormalizeURL нормализует URL для избежания дубликатов
+// Убирает trailing slash для корневого пути и fragment
+func NormalizeURL(u *url.URL) string {
+	// Клонируем URL чтобы не модифицировать оригинал
+	normalized := *u
+
+	// Убираем fragment (#section)
+	normalized.Fragment = ""
+
+	// Убираем trailing slash только для корневого пути
+	if normalized.Path == "/" {
+		normalized.Path = ""
+	}
+
+	return normalized.String()
+}
+
 // IsSameDomain проверяет что URL в пределах одного домена
 func IsSameDomain(linkURL, baseURL *url.URL) bool {
 	return linkURL.Host == baseURL.Host
@@ -58,5 +75,5 @@ func ResolveURL(href string, baseURL *url.URL) string {
 	}
 
 	resolvedURL := baseURL.ResolveReference(parsedURL)
-	return resolvedURL.String()
+	return NormalizeURL(resolvedURL)
 }

@@ -179,7 +179,8 @@ func (c *Crawler) enqueueInternalLinks(links []string, depth int) {
 			continue
 		}
 
-		normalized := linkURL.String()
+		// Нормализуем URL перед добавлением
+		normalized := NormalizeURL(linkURL)
 		if !c.state.Visited.Contains(normalized) {
 			toAdd = append(toAdd, urlWithDepth{url: normalized, depth: depth})
 		}
