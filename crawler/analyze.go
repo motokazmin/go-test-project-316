@@ -2,6 +2,7 @@ package crawler
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"time"
@@ -12,11 +13,15 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 	// 1. Нормализуем опции
 	normalizeOptions(&opts)
 
+	fmt.Printf("[DEBUG] Analyze called with URL=%s, Depth=%d\n", opts.URL, opts.Depth)
+
 	// 2. Валидируем URL
 	rootURL, err := ParseAndValidateURL(opts.URL)
 	if err != nil {
 		return nil, err
 	}
+
+	fmt.Printf("[DEBUG] Root URL normalized: %s\n", rootURL.String())
 
 	// 3. Создаем компоненты
 	rateLimiter := NewRateLimiter(ctx, opts.Delay)
@@ -40,8 +45,12 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 		maxDepth:      opts.Depth,
 	}
 
+	fmt.Printf("[DEBUG] Crawler created with maxDepth=%d\n", crawler.maxDepth)
+
 	// 5. Запускаем обход
 	crawler.Run(ctx)
+
+	fmt.Printf("[DEBUG] Crawl finished\n")
 
 	// 6. Возвращаем отчет
 	return reportBuilder.Encode(opts.IndentJSON)
@@ -61,9 +70,14 @@ type Crawler struct {
 
 // Run запускает процесс обхода
 func (c *Crawler) Run(ctx context.Context) {
+	iteration := 0
 	for {
+		iteration++
+		fmt.Printf("[DEBUG] Run iteration %d, queue empty: %v\n", iteration, c.state.Queue.IsEmpty())
+
 		// Проверяем контекст
 		if ctx.Err() != nil {
+			fmt.Printf("[DEBUG] Context cancelled\n")
 			break
 		}
 
@@ -72,15 +86,21 @@ func (c *Crawler) Run(ctx context.Context) {
 
 		// Если очереди пуста, ждём завершения всех воркеров
 		if item == nil {
+			fmt.Printf("[DEBUG] Queue empty, waiting for workers...\n")
 			c.state.WG.Wait()
+			fmt.Printf("[DEBUG] All workers done\n")
 
 			// После завершения воркеров проверяем очередь снова
 			// (воркеры могли добавить новые URL)
 			if c.state.Queue.IsEmpty() {
+				fmt.Printf("[DEBUG] Queue still empty after workers, exiting\n")
 				break
 			}
+			fmt.Printf("[DEBUG] Queue has items after workers, continuing\n")
 			continue
 		}
+
+		fmt.Printf("[DEBUG] Processing URL: %s (depth=%d)\n", item.url, item.depth)
 
 		// Обрабатываем URL
 		c.processURLWithWorker(ctx, item.url, item.depth)
@@ -88,6 +108,7 @@ func (c *Crawler) Run(ctx context.Context) {
 
 	// Финальное ожидание завершения всех воркеров
 	c.state.WG.Wait()
+	fmt.Printf("[DEBUG] Final wait done\n")
 }
 
 // processURLWithWorker обрабатывает URL в отдельном worker'е
@@ -107,14 +128,17 @@ func (c *Crawler) processURLWithWorker(ctx context.Context, urlStr string, depth
 func (c *Crawler) processSingleURL(ctx context.Context, urlStr string, depth int) {
 	select {
 	case <-ctx.Done():
+		fmt.Printf("[DEBUG] Worker cancelled for %s\n", urlStr)
 		return
 	default:
 	}
 
 	if c.state.Visited.Contains(urlStr) {
+		fmt.Printf("[DEBUG] Already visited: %s\n", urlStr)
 		return
 	}
 
+	fmt.Printf("[DEBUG] Visiting: %s (depth=%d)\n", urlStr, depth)
 	c.state.Visited.Add(urlStr)
 
 	page := Page{
@@ -126,6 +150,8 @@ func (c *Crawler) processSingleURL(ctx context.Context, urlStr string, depth int
 	result := c.fetcher.Fetch(ctx, urlStr)
 	page.HTTPStatus = result.StatusCode
 
+	fmt.Printf("[DEBUG] Fetched %s: status=%d, hasContent=%v\n", urlStr, result.StatusCode, result.HTMLContent != "")
+
 	if result.Error != nil {
 		page.Error = result.Error.Error()
 		SetPageStatus(&page)
@@ -134,6 +160,7 @@ func (c *Crawler) processSingleURL(ctx context.Context, urlStr string, depth int
 		page.BrokenLinks = []BrokenLink{}
 		page.Assets = []Asset{}
 		c.reportBuilder.AddPage(page)
+		fmt.Printf("[DEBUG] Added page with error: %s\n", urlStr)
 		return
 	}
 
@@ -147,6 +174,7 @@ func (c *Crawler) processSingleURL(ctx context.Context, urlStr string, depth int
 
 		// Извлекаем ссылки
 		links := c.parser.ExtractLinks(result.HTMLContent, pageURL)
+		fmt.Printf("[DEBUG] Found %d links on %s\n", len(links), urlStr)
 
 		// Проверяем битые ссылки
 		page.BrokenLinks, page.DiscoveredAt = c.linkChecker.CheckLinks(ctx, links)
@@ -155,7 +183,11 @@ func (c *Crawler) processSingleURL(ctx context.Context, urlStr string, depth int
 		page.Assets = c.assetChecker.CheckAssets(ctx, result.HTMLContent, pageURL)
 
 		// Добавляем внутренние ссылки в очередь
-		if depth < c.maxDepth && page.Status == "ok" {
+		shouldEnqueue := depth < c.maxDepth && page.Status == "ok"
+		fmt.Printf("[DEBUG] Should enqueue links? depth=%d, maxDepth=%d, status=%s → %v\n",
+			depth, c.maxDepth, page.Status, shouldEnqueue)
+
+		if shouldEnqueue {
 			c.enqueueInternalLinks(links, depth+1)
 		}
 	} else {
@@ -167,11 +199,14 @@ func (c *Crawler) processSingleURL(ctx context.Context, urlStr string, depth int
 	}
 
 	c.reportBuilder.AddPage(page)
+	fmt.Printf("[DEBUG] Added page: %s\n", urlStr)
 }
 
 // enqueueInternalLinks добавляет внутренние ссылки в очередь
 func (c *Crawler) enqueueInternalLinks(links []string, depth int) {
 	toAdd := []urlWithDepth{}
+
+	fmt.Printf("[DEBUG] enqueueInternalLinks called with %d links, depth=%d\n", len(links), depth)
 
 	for _, link := range links {
 		linkURL, err := url.Parse(link)
@@ -182,12 +217,18 @@ func (c *Crawler) enqueueInternalLinks(links []string, depth int) {
 		// Нормализуем URL перед добавлением
 		normalized := NormalizeURL(linkURL)
 		if !c.state.Visited.Contains(normalized) {
+			fmt.Printf("[DEBUG] Will enqueue: %s (depth=%d)\n", normalized, depth)
 			toAdd = append(toAdd, urlWithDepth{url: normalized, depth: depth})
+		} else {
+			fmt.Printf("[DEBUG] Already visited, skip: %s\n", normalized)
 		}
 	}
 
 	if len(toAdd) > 0 {
+		fmt.Printf("[DEBUG] Enqueueing %d URLs\n", len(toAdd))
 		c.state.Queue.Enqueue(toAdd)
+	} else {
+		fmt.Printf("[DEBUG] No URLs to enqueue\n")
 	}
 }
 
