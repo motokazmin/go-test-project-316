@@ -45,11 +45,8 @@ func (e *SEOExtractor) extractTitle(doc *html.Node, seo *SEO) {
 
 		if n.Type == html.ElementNode && n.Data == "title" {
 			seo.HasTitle = true
-
-			// Извлекаем текст если есть
-			if n.FirstChild != nil && n.FirstChild.Type == html.TextNode {
-				seo.Title = strings.TrimSpace(n.FirstChild.Data)
-			}
+			// Используем extractTextContent для корректной работы с XML
+			seo.Title = extractTextContent(n)
 			return
 		}
 
@@ -105,10 +102,10 @@ func (e *SEOExtractor) extractH1(doc *html.Node, seo *SEO) {
 			return
 		}
 
-	if n.Type == html.ElementNode && n.Data == "h1" {
-		seo.HasH1 = true
-		return
-	}
+		if n.Type == html.ElementNode && n.Data == "h1" {
+			seo.HasH1 = true
+			return
+		}
 
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
 			find(c)

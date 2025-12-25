@@ -3,6 +3,7 @@ package crawler
 import (
 	"encoding/json"
 	"net/url"
+	"sort"
 	"sync"
 	"time"
 )
@@ -27,11 +28,18 @@ func NewReportBuilder(rootURL *url.URL, depth int) *ReportBuilder {
 
 // AddPage добавляет страницу в отчет (потокобезопасно)
 func (rb *ReportBuilder) AddPage(page Page) {
-	if page.BrokenLinks == nil {
-		page.BrokenLinks = []BrokenLink{}
-	}
-	if page.Assets == nil {
-		page.Assets = []Asset{}
+	// Для страниц с ошибками оставляем nil
+	if page.Error != "" {
+		page.BrokenLinks = nil
+		page.Assets = nil
+	} else {
+		// Для успешных страниц инициализируем пустыми массивами
+		if page.BrokenLinks == nil {
+			page.BrokenLinks = []BrokenLink{}
+		}
+		if page.Assets == nil {
+			page.Assets = []Asset{}
+		}
 	}
 
 	rb.mu.Lock()
@@ -43,6 +51,11 @@ func (rb *ReportBuilder) AddPage(page Page) {
 func (rb *ReportBuilder) Encode(indent bool) ([]byte, error) {
 	rb.mu.Lock()
 	defer rb.mu.Unlock()
+
+	// Сортируем страницы по URL для детерминированного порядка
+	sort.SliceStable(rb.report.Pages, func(i, j int) bool {
+		return rb.report.Pages[i].URL < rb.report.Pages[j].URL
+	})
 
 	if indent {
 		return json.MarshalIndent(rb.report, "", "  ")
