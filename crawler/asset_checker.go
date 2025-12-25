@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"sync"
 )
 
@@ -75,6 +76,11 @@ func (ac *AssetChecker) CheckAssets(ctx context.Context, htmlContent string, pag
 	for i := 0; i < len(assetURLs); i++ {
 		assets[i] = results[i]
 	}
+
+	// Сортируем по типу (алфавитный порядок: image, script, style)
+	sort.SliceStable(assets, func(i, j int) bool {
+		return assets[i].Type < assets[j].Type
+	})
 
 	return assets
 }
