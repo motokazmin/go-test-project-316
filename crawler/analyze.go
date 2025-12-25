@@ -26,7 +26,6 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 	// 3. Создаем компоненты
 	rateLimiter := NewRateLimiter(ctx, opts.Delay)
 	state := NewCrawlState(rootURL, opts.Concurrency, rateLimiter)
-	fmt.Printf("[DEBUG] Base URL for domain check: %s\n", state.BaseURL.String())
 	fetcher := NewFetcher(opts, rateLimiter)
 	parser := NewHTMLParser()
 	seoExtractor := NewSEOExtractor()
@@ -153,12 +152,6 @@ func (c *Crawler) processSingleURL(ctx context.Context, urlStr string, depth int
 
 	fmt.Printf("[DEBUG] Fetched %s: status=%d, hasContent=%v\n", urlStr, result.StatusCode, result.HTMLContent != "")
 
-	// Логируем HTML контент для отладки
-	if result.HTMLContent != "" {
-		fmt.Printf("[DEBUG] HTML Content (first 500 chars):\n%s\n", truncateString(result.HTMLContent, 500))
-		fmt.Printf("[DEBUG] HTML Content (full length): %d bytes\n", len(result.HTMLContent))
-	}
-
 	if result.Error != nil {
 		page.Error = result.Error.Error()
 		SetPageStatus(&page)
@@ -182,13 +175,11 @@ func (c *Crawler) processSingleURL(ctx context.Context, urlStr string, depth int
 		// Извлекаем ссылки
 		links := c.parser.ExtractLinks(result.HTMLContent, pageURL)
 		fmt.Printf("[DEBUG] Found %d links on %s\n", len(links), urlStr)
-
-		// Логируем каждую ссылку
 		for i, link := range links {
 			fmt.Printf("[DEBUG]   Link %d: %s\n", i+1, link)
 		}
 
-		// Проверяем битые ссылки (все ссылки)
+		// Проверяем битые ссылки
 		page.BrokenLinks, page.DiscoveredAt = c.linkChecker.CheckLinks(ctx, links)
 		fmt.Printf("[DEBUG] Found %d broken links\n", len(page.BrokenLinks))
 		for i, bl := range page.BrokenLinks {
@@ -260,12 +251,4 @@ func normalizeOptions(opts *Options) {
 	if opts.Timeout <= 0 {
 		opts.Timeout = 15 * time.Second
 	}
-}
-
-// truncateString обрезает строку до maxLen символов
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
 }
