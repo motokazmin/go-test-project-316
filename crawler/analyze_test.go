@@ -33,10 +33,10 @@ func TestAnalyzeBasic(t *testing.T) {
 	}
 
 	opts := Options{
-		URL:        "https://example.com",
-		Depth:      1,
-		Workers:    1,
-		HTTPClient: mockClient,
+		URL:         "https://example.com",
+		Depth:       1,
+		Concurrency: 1,
+		HTTPClient:  mockClient,
 	}
 
 	result, err := Analyze(context.Background(), opts)
@@ -88,10 +88,10 @@ func TestAnalyzeWithContext(t *testing.T) {
 	cancel() // Сразу отменяем контекст
 
 	opts := Options{
-		URL:        "https://example.com",
-		Depth:      1,
-		Workers:    1,
-		HTTPClient: mockClient,
+		URL:         "https://example.com",
+		Depth:       1,
+		Concurrency: 1,
+		HTTPClient:  mockClient,
 	}
 
 	result, err := Analyze(ctx, opts)
@@ -123,10 +123,10 @@ func TestAnalyzeErrorHandling(t *testing.T) {
 	}
 
 	opts := Options{
-		URL:        "https://example.com",
-		Depth:      0,
-		Workers:    1,
-		HTTPClient: mockClient,
+		URL:         "https://example.com",
+		Depth:       0,
+		Concurrency: 1,
+		HTTPClient:  mockClient,
 	}
 
 	result, err := Analyze(context.Background(), opts)
@@ -243,10 +243,10 @@ func TestAnalyzeServerError(t *testing.T) {
 	}
 
 	opts := Options{
-		URL:        "https://example.com",
-		Depth:      0,
-		Workers:    1,
-		HTTPClient: mockClient,
+		URL:         "https://example.com",
+		Depth:       0,
+		Concurrency: 1,
+		HTTPClient:  mockClient,
 	}
 
 	result, err := Analyze(context.Background(), opts)
@@ -282,10 +282,10 @@ func TestAnalyzeRedirect(t *testing.T) {
 	}
 
 	opts := Options{
-		URL:        "https://example.com",
-		Depth:      0,
-		Workers:    1,
-		HTTPClient: mockClient,
+		URL:         "https://example.com",
+		Depth:       0,
+		Concurrency: 1,
+		HTTPClient:  mockClient,
 	}
 
 	result, err := Analyze(context.Background(), opts)
@@ -317,10 +317,10 @@ func TestAnalyzeNetworkError(t *testing.T) {
 	}
 
 	opts := Options{
-		URL:        "https://example.com",
-		Depth:      0,
-		Workers:    1,
-		HTTPClient: mockClient,
+		URL:         "https://example.com",
+		Depth:       0,
+		Concurrency: 1,
+		HTTPClient:  mockClient,
 	}
 
 	result, err := Analyze(context.Background(), opts)
@@ -354,11 +354,11 @@ func TestAnalyzeTimeout(t *testing.T) {
 	}
 
 	opts := Options{
-		URL:        "https://example.com",
-		Depth:      0,
-		Workers:    1,
-		Timeout:    10 * time.Millisecond,
-		HTTPClient: mockClient,
+		URL:         "https://example.com",
+		Depth:       0,
+		Concurrency: 1,
+		Timeout:     10 * time.Millisecond,
+		HTTPClient:  mockClient,
 	}
 
 	result, err := Analyze(context.Background(), opts)
@@ -395,11 +395,11 @@ func TestAnalyzeRetries(t *testing.T) {
 	}
 
 	opts := Options{
-		URL:        "https://example.com",
-		Depth:      0,
-		Workers:    1,
-		Retries:    2,
-		HTTPClient: mockClient,
+		URL:         "https://example.com",
+		Depth:       0,
+		Concurrency: 1,
+		Retries:     2,
+		HTTPClient:  mockClient,
 	}
 
 	result, err := Analyze(context.Background(), opts)
@@ -476,10 +476,10 @@ func TestBrokenLinks(t *testing.T) {
 	}
 
 	opts := Options{
-		URL:        "https://example.com",
-		Depth:      0,
-		Workers:    1,
-		HTTPClient: mockClient,
+		URL:         "https://example.com",
+		Depth:       0,
+		Concurrency: 1,
+		HTTPClient:  mockClient,
 	}
 
 	result, err := Analyze(context.Background(), opts)
@@ -538,10 +538,10 @@ func TestIgnoredLinks(t *testing.T) {
 	}
 
 	opts := Options{
-		URL:        "https://example.com",
-		Depth:      0,
-		Workers:    1,
-		HTTPClient: mockClient,
+		URL:         "https://example.com",
+		Depth:       0,
+		Concurrency: 1,
+		HTTPClient:  mockClient,
 	}
 
 	result, err := Analyze(context.Background(), opts)
@@ -585,10 +585,10 @@ func TestSEOComplete(t *testing.T) {
 	}
 
 	opts := Options{
-		URL:        "https://example.com",
-		Depth:      0,
-		Workers:    1,
-		HTTPClient: mockClient,
+		URL:         "https://example.com",
+		Depth:       0,
+		Concurrency: 1,
+		HTTPClient:  mockClient,
 	}
 
 	result, err := Analyze(context.Background(), opts)
@@ -610,24 +610,16 @@ func TestSEOComplete(t *testing.T) {
 		t.Errorf("Expected has_title to be true")
 	}
 
-	if page.SEO.Title == nil || *page.SEO.Title != "Test Page Title" {
-		got := ""
-		if page.SEO.Title != nil {
-			got = *page.SEO.Title
-		}
-		t.Errorf("Expected title 'Test Page Title', got '%s'", got)
+	if page.SEO.Title != "Test Page Title" {
+		t.Errorf("Expected title 'Test Page Title', got '%s'", page.SEO.Title)
 	}
 
 	if !page.SEO.HasDescription {
 		t.Errorf("Expected has_description to be true")
 	}
 
-	if page.SEO.Description == nil || *page.SEO.Description != "This is a test description" {
-		got := ""
-		if page.SEO.Description != nil {
-			got = *page.SEO.Description
-		}
-		t.Errorf("Expected description 'This is a test description', got '%s'", got)
+	if page.SEO.Description != "This is a test description" {
+		t.Errorf("Expected description 'This is a test description', got '%s'", page.SEO.Description)
 	}
 
 	if !page.SEO.HasH1 {
@@ -657,10 +649,10 @@ func TestSEOMissing(t *testing.T) {
 	}
 
 	opts := Options{
-		URL:        "https://example.com",
-		Depth:      0,
-		Workers:    1,
-		HTTPClient: mockClient,
+		URL:         "https://example.com",
+		Depth:       0,
+		Concurrency: 1,
+		HTTPClient:  mockClient,
 	}
 
 	result, err := Analyze(context.Background(), opts)
@@ -682,16 +674,16 @@ func TestSEOMissing(t *testing.T) {
 		t.Errorf("Expected has_title to be false")
 	}
 
-	if page.SEO.Title != nil {
-		t.Errorf("Expected title to be nil")
+	if page.SEO.Title != "" {
+		t.Errorf("Expected title to be empty string, got '%s'", page.SEO.Title)
 	}
 
 	if page.SEO.HasDescription {
 		t.Errorf("Expected has_description to be false")
 	}
 
-	if page.SEO.Description != nil {
-		t.Errorf("Expected description to be nil")
+	if page.SEO.Description != "" {
+		t.Errorf("Expected description to be empty string, got '%s'", page.SEO.Description)
 	}
 
 	if page.SEO.HasH1 {
@@ -723,10 +715,10 @@ func TestSEOHTMLEntities(t *testing.T) {
 	}
 
 	opts := Options{
-		URL:        "https://example.com",
-		Depth:      0,
-		Workers:    1,
-		HTTPClient: mockClient,
+		URL:         "https://example.com",
+		Depth:       0,
+		Concurrency: 1,
+		HTTPClient:  mockClient,
 	}
 
 	result, err := Analyze(context.Background(), opts)
@@ -744,19 +736,11 @@ func TestSEOHTMLEntities(t *testing.T) {
 		t.Fatalf("Expected SEO data, got nil")
 	}
 
-	if page.SEO.Title == nil || *page.SEO.Title != "Cats & Dogs" {
-		got := ""
-		if page.SEO.Title != nil {
-			got = *page.SEO.Title
-		}
-		t.Errorf("Expected title 'Cats & Dogs', got '%s'", got)
+	if page.SEO.Title != "Cats & Dogs" {
+		t.Errorf("Expected title 'Cats & Dogs', got '%s'", page.SEO.Title)
 	}
 
-	if page.SEO.Description == nil || *page.SEO.Description != "Benefits of \"good\" pet food" {
-		got := ""
-		if page.SEO.Description != nil {
-			got = *page.SEO.Description
-		}
-		t.Errorf("Expected description with decoded quotes, got '%s'", got)
+	if page.SEO.Description != "Benefits of \"good\" pet food" {
+		t.Errorf("Expected description with decoded quotes, got '%s'", page.SEO.Description)
 	}
 }

@@ -57,12 +57,12 @@ func TestJSONFormat_MatchesReference(t *testing.T) {
 	}
 
 	opts := Options{
-		URL:        "https://example.com",
-		Depth:      0,
-		Workers:    1,
-		Timeout:    5 * time.Second,
-		HTTPClient: mockClient,
-		IndentJSON: false,
+		URL:         "https://example.com",
+		Depth:       0,
+		Concurrency: 1,
+		Timeout:     5 * time.Second,
+		HTTPClient:  mockClient,
+		IndentJSON:  false,
 	}
 
 	result, err := Analyze(context.Background(), opts)
@@ -134,12 +134,12 @@ func TestJSONFormat_AllKeysPresent(t *testing.T) {
 	}
 
 	opts := Options{
-		URL:        "https://example.com",
-		Depth:      0,
-		Workers:    1,
-		Timeout:    5 * time.Second,
-		HTTPClient: mockClient,
-		IndentJSON: false,
+		URL:         "https://example.com",
+		Depth:       0,
+		Concurrency: 1,
+		Timeout:     5 * time.Second,
+		HTTPClient:  mockClient,
+		IndentJSON:  false,
 	}
 
 	result, err := Analyze(context.Background(), opts)
@@ -198,11 +198,11 @@ func TestJSONFormat_IndentPreservesContent(t *testing.T) {
 	}
 
 	opts := Options{
-		URL:        "https://example.com",
-		Depth:      0,
-		Workers:    1,
-		Timeout:    5 * time.Second,
-		HTTPClient: mockClient,
+		URL:         "https://example.com",
+		Depth:       0,
+		Concurrency: 1,
+		Timeout:     5 * time.Second,
+		HTTPClient:  mockClient,
 	}
 
 	// Без отступов
@@ -255,11 +255,11 @@ func TestJSONFormat_ISO8601Timestamps(t *testing.T) {
 	}
 
 	opts := Options{
-		URL:        "https://example.com",
-		Depth:      0,
-		Workers:    1,
-		Timeout:    5 * time.Second,
-		HTTPClient: mockClient,
+		URL:         "https://example.com",
+		Depth:       0,
+		Concurrency: 1,
+		Timeout:     5 * time.Second,
+		HTTPClient:  mockClient,
 	}
 
 	result, err := Analyze(context.Background(), opts)

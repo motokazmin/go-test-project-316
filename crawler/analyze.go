@@ -20,13 +20,13 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 
 	// 3. Создаем компоненты
 	rateLimiter := NewRateLimiter(ctx, opts.Delay)
-	state := NewCrawlState(rootURL, opts.Workers, rateLimiter)
+	state := NewCrawlState(rootURL, opts.Concurrency, rateLimiter)
 	fetcher := NewFetcher(opts, rateLimiter)
 	parser := NewHTMLParser()
 	seoExtractor := NewSEOExtractor()
-	linkChecker := NewLinkChecker(fetcher, opts.Workers)
+	linkChecker := NewLinkChecker(fetcher, opts.Concurrency)
 	reportBuilder := NewReportBuilder(rootURL, opts.Depth)
-	assetChecker := NewAssetChecker(fetcher, opts.Workers)
+	assetChecker := NewAssetChecker(fetcher, opts.Concurrency)
 
 	// 4. Создаем crawler
 	crawler := &Crawler{
@@ -176,8 +176,8 @@ func normalizeOptions(opts *Options) {
 	if opts.HTTPClient == nil {
 		opts.HTTPClient = &http.Client{}
 	}
-	if opts.Workers <= 0 {
-		opts.Workers = 4
+	if opts.Concurrency <= 0 {
+		opts.Concurrency = 4
 	}
 	if opts.Timeout <= 0 {
 		opts.Timeout = 15 * time.Second

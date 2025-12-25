@@ -13,16 +13,16 @@ import (
 
 func main() {
 	var (
-		depth     = flag.Int("depth", 10, "crawl depth")
-		retries   = flag.Int("retries", 1, "number of retries for failed requests")
-		delayStr  = flag.String("delay", "0s", "delay between requests")
-		timeout   = flag.Duration("timeout", 15*time.Second, "per-request timeout")
-		rps       = flag.Int("rps", 0, "limit requests per second (overrides delay)")
-		userAgent = flag.String("user-agent", "", "custom user agent")
-		workers   = flag.Int("workers", 4, "number of concurrent workers")
-		indent    = flag.Bool("indent", true, "indent JSON output")
-		help      = flag.Bool("help", false, "show help")
-		h         = flag.Bool("h", false, "show help")
+		depth       = flag.Int("depth", 10, "crawl depth")
+		retries     = flag.Int("retries", 1, "number of retries for failed requests")
+		delayStr    = flag.String("delay", "0s", "delay between requests")
+		timeout     = flag.Duration("timeout", 15*time.Second, "per-request timeout")
+		rps         = flag.Int("rps", 0, "limit requests per second (overrides delay)")
+		userAgent   = flag.String("user-agent", "", "custom user agent")
+		concurrency = flag.Int("workers", 4, "number of concurrent workers")
+		indent      = flag.Bool("indent", true, "indent JSON output")
+		help        = flag.Bool("help", false, "show help")
+		h           = flag.Bool("h", false, "show help")
 	)
 
 	flag.Usage = func() {
@@ -76,15 +76,15 @@ GLOBAL OPTIONS:
 
 	// Создаем опции
 	opts := crawler.Options{
-		URL:        urlStr,
-		Depth:      *depth,
-		Retries:    *retries,
-		Delay:      delay,
-		Timeout:    *timeout,
-		UserAgent:  *userAgent,
-		Workers:    *workers,
-		IndentJSON: *indent,
-		HTTPClient: &http.Client{},
+		URL:         urlStr,
+		Depth:       *depth,
+		Retries:     *retries,
+		Delay:       delay,
+		Timeout:     *timeout,
+		UserAgent:   *userAgent,
+		Concurrency: *concurrency,
+		IndentJSON:  *indent,
+		HTTPClient:  &http.Client{},
 	}
 
 	// Запускаем анализ
@@ -98,4 +98,3 @@ GLOBAL OPTIONS:
 	fmt.Println(string(report))
 	os.Exit(0)
 }
-

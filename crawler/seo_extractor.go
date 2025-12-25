@@ -48,12 +48,7 @@ func (e *SEOExtractor) extractTitle(doc *html.Node, seo *SEO) {
 
 			// Извлекаем текст если есть
 			if n.FirstChild != nil && n.FirstChild.Type == html.TextNode {
-				title := strings.TrimSpace(n.FirstChild.Data)
-				seo.Title = &title
-			} else {
-				// title есть, но пустой
-				empty := ""
-				seo.Title = &empty
+				seo.Title = strings.TrimSpace(n.FirstChild.Data)
 			}
 			return
 		}
@@ -89,7 +84,7 @@ func (e *SEOExtractor) extractDescription(doc *html.Node, seo *SEO) {
 
 			if name == "description" {
 				seo.HasDescription = true
-				seo.Description = &content
+				seo.Description = content
 				return
 			}
 		}
@@ -114,14 +109,7 @@ func (e *SEOExtractor) extractH1(doc *html.Node, seo *SEO) {
 			seo.HasH1 = true
 
 			// Извлекаем текст
-			text := extractTextContent(n)
-			if text != "" {
-				seo.H1 = &text
-			} else {
-				// H1 есть, но пустой
-				empty := ""
-				seo.H1 = &empty
-			}
+			seo.H1 = extractTextContent(n)
 			return
 		}
 

@@ -12,15 +12,15 @@ type HTTPClient interface {
 
 // Options содержит параметры для обхода сайта
 type Options struct {
-	URL        string
-	Depth      int
-	Retries    int
-	Delay      time.Duration
-	Timeout    time.Duration
-	UserAgent  string
-	Workers    int
-	IndentJSON bool
-	HTTPClient HTTPClient
+	URL         string
+	Depth       int
+	Retries     int
+	Delay       time.Duration
+	Timeout     time.Duration
+	UserAgent   string
+	Concurrency int
+	IndentJSON  bool
+	HTTPClient  HTTPClient
 }
 
 // Report содержит результат обхода сайта
@@ -40,12 +40,12 @@ type BrokenLink struct {
 
 // SEO содержит базовые SEO параметры страницы
 type SEO struct {
-	HasTitle       bool    `json:"has_title"`
-	Title          *string `json:"title"`
-	HasDescription bool    `json:"has_description"`
-	Description    *string `json:"description"`
-	HasH1          bool    `json:"has_h1"`
-	H1             *string `json:"h1,omitempty"`
+	HasTitle       bool   `json:"has_title"`
+	Title          string `json:"title"`
+	HasDescription bool   `json:"has_description"`
+	Description    string `json:"description"`
+	HasH1          bool   `json:"has_h1"`
+	H1             string `json:"h1,omitempty"`
 }
 
 // Page содержит информацию о странице
