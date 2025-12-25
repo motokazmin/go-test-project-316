@@ -105,13 +105,10 @@ func (e *SEOExtractor) extractH1(doc *html.Node, seo *SEO) {
 			return
 		}
 
-		if n.Type == html.ElementNode && n.Data == "h1" {
-			seo.HasH1 = true
-
-			// Извлекаем текст
-			seo.H1 = extractTextContent(n)
-			return
-		}
+	if n.Type == html.ElementNode && n.Data == "h1" {
+		seo.HasH1 = true
+		return
+	}
 
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
 			find(c)

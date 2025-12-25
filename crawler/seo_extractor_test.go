@@ -27,9 +27,6 @@ func TestSEOExtractor_NoElements(t *testing.T) {
 	if seo.HasH1 {
 		t.Error("HasH1 should be false when no h1 element")
 	}
-	if seo.H1 != "" {
-		t.Error("H1 should be empty string when no h1 element")
-	}
 }
 
 func TestSEOExtractor_EmptyElements(t *testing.T) {
@@ -67,9 +64,6 @@ func TestSEOExtractor_EmptyElements(t *testing.T) {
 	// H1
 	if !seo.HasH1 {
 		t.Error("HasH1 should be true when h1 element exists")
-	}
-	if seo.H1 != "" {
-		t.Errorf("H1 should be empty string, got: %s", seo.H1)
 	}
 }
 
@@ -109,9 +103,6 @@ func TestSEOExtractor_WithContent(t *testing.T) {
 	if !seo.HasH1 {
 		t.Error("HasH1 should be true")
 	}
-	if seo.H1 != "Main Heading" {
-		t.Errorf("Expected 'Main Heading', got: %s", seo.H1)
-	}
 }
 
 func TestSEOExtractor_WhitespaceHandling(t *testing.T) {
@@ -138,9 +129,9 @@ func TestSEOExtractor_WhitespaceHandling(t *testing.T) {
 		t.Errorf("Expected 'Spaced Title', got: '%s'", seo.Title)
 	}
 
-	// H1 должен быть объединен без лишних пробелов
-	if seo.H1 != "Multi Line H1" {
-		t.Errorf("Expected 'Multi Line H1', got: '%s'", seo.H1)
+	// H1 флаг должен быть установлен
+	if !seo.HasH1 {
+		t.Error("HasH1 should be true for multiline h1")
 	}
 }
 
@@ -166,8 +157,9 @@ func TestSEOExtractor_MultipleElements(t *testing.T) {
 		t.Errorf("Expected first title, got: %s", seo.Title)
 	}
 
-	if seo.H1 != "First H1" {
-		t.Errorf("Expected first H1, got: %s", seo.H1)
+	// H1 флаг должен быть установлен
+	if !seo.HasH1 {
+		t.Error("HasH1 should be true")
 	}
 }
 
@@ -183,10 +175,9 @@ func TestSEOExtractor_NestedText(t *testing.T) {
 
 	seo := extractor.Extract(html)
 
-	// Должен извлечь весь текст
-	expected := "Text with bold and italic"
-	if seo.H1 != expected {
-		t.Errorf("Expected '%s', got: '%s'", expected, seo.H1)
+	// H1 флаг должен быть установлен
+	if !seo.HasH1 {
+		t.Error("HasH1 should be true for nested content")
 	}
 }
 

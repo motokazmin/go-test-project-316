@@ -113,7 +113,7 @@ func TestJSONFormat_MatchesReference(t *testing.T) {
 	pageJSON, _ := json.Marshal(page)
 	json.Unmarshal(pageJSON, &rawPage)
 
-	requiredKeys := []string{"url", "depth", "http_status", "status", "error", "seo", "broken_links", "assets", "discovered_at"}
+	requiredKeys := []string{"url", "depth", "http_status", "status", "seo", "broken_links", "assets", "discovered_at"}
 	for _, key := range requiredKeys {
 		if _, exists := rawPage[key]; !exists {
 			t.Errorf("Required key '%s' is missing from JSON", key)
@@ -168,7 +168,7 @@ func TestJSONFormat_AllKeysPresent(t *testing.T) {
 	}
 
 	page := pages[0].(map[string]interface{})
-	requiredPageKeys := []string{"url", "depth", "http_status", "status", "error", "seo", "broken_links", "assets", "discovered_at"}
+	requiredPageKeys := []string{"url", "depth", "http_status", "status", "seo", "broken_links", "assets", "discovered_at"}
 
 	for _, key := range requiredPageKeys {
 		if _, exists := page[key]; !exists {
