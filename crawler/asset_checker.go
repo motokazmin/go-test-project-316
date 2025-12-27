@@ -158,9 +158,7 @@ func (ac *AssetChecker) fetchAsset(ctx context.Context, assetURL string) AssetRe
 	}
 
 	defer func() {
-		if closeErr := resp.Body.Close(); closeErr != nil {
-			// Игнорируем ошибку закрытия, так как уже получили нужные данные
-		}
+		_ = resp.Body.Close()
 	}()
 
 	result := AssetResult{

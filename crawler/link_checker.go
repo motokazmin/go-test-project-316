@@ -165,9 +165,7 @@ func (lc *LinkChecker) performHeadRequest(ctx context.Context, urlStr string) Fe
 	}
 
 	defer func() {
-		if closeErr := resp.Body.Close(); closeErr != nil {
-			// Игнорируем ошибку закрытия, так как уже получили нужные данные
-		}
+		_ = resp.Body.Close()
 	}()
 
 	return FetchResult{
