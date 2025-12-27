@@ -2,6 +2,7 @@ package crawler
 
 import (
 	"context"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -62,8 +63,7 @@ func (lc *LinkChecker) CheckLinks(ctx context.Context, links []string) ([]Broken
 // checkSingleLink проверяет одну ссылку
 // Возвращает результат ПОСЛЕДНЕЙ попытки
 func (lc *LinkChecker) checkSingleLink(ctx context.Context, linkURL string) (BrokenLink, bool) {
-	// Fetch автоматически выполняет retry
-	result := lc.fetcher.Fetch(ctx, linkURL)
+	result := lc.headRequest(ctx, linkURL)
 
 	// Ссылка работает
 	if result.StatusCode >= 200 && result.StatusCode < 400 && result.Error == nil {
@@ -79,4 +79,93 @@ func (lc *LinkChecker) checkSingleLink(ctx context.Context, linkURL string) (Bro
 	}
 
 	return brokenLink, true
+}
+
+// headRequest выполняет HEAD запрос с retry логикой
+func (lc *LinkChecker) headRequest(ctx context.Context, urlStr string) FetchResult {
+	maxRetries := 2 // Используем меньше retry для broken links проверки
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Проверяем отмену контекста
+		if ctx.Err() != nil {
+			return FetchResult{Error: ctx.Err()}
+		}
+
+		// Задержка перед повторной попыткой (не для первой)
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return FetchResult{Error: ctx.Err()}
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+
+		// Выполняем HEAD запрос
+		result := lc.performHeadRequest(ctx, urlStr)
+
+		// Успех - возвращаем результат
+		if result.Error == nil && result.StatusCode < 500 && result.StatusCode != 429 {
+			return result
+		}
+
+		// Последняя попытка или не требует retry - возвращаем как есть
+		if attempt == maxRetries || !lc.shouldRetry(result) {
+			return result
+		}
+	}
+
+	return FetchResult{}
+}
+
+// shouldRetry определяет нужен ли retry
+func (lc *LinkChecker) shouldRetry(result FetchResult) bool {
+	// Сетевая ошибка - retry
+	if result.Error != nil {
+		return true
+	}
+
+	// HTTP 429 Too Many Requests - retry
+	if result.StatusCode == 429 {
+		return true
+	}
+
+	// HTTP 5xx Server Error - retry
+	if result.StatusCode >= 500 && result.StatusCode < 600 {
+		return true
+	}
+
+	return false
+}
+
+// performHeadRequest выполняет один HEAD запрос
+func (lc *LinkChecker) performHeadRequest(ctx context.Context, urlStr string) FetchResult {
+	// Rate limiting
+	if lc.fetcher.rateLimiter != nil {
+		if !lc.fetcher.rateLimiter.Wait(ctx) {
+			return FetchResult{Error: ctx.Err()}
+		}
+	}
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, lc.fetcher.timeout)
+	defer cancel()
+
+	// Используем HEAD вместо GET
+	req, err := http.NewRequestWithContext(timeoutCtx, http.MethodHead, urlStr, nil)
+	if err != nil {
+		return FetchResult{Error: err}
+	}
+
+	if lc.fetcher.userAgent != "" {
+		req.Header.Set("User-Agent", lc.fetcher.userAgent)
+	}
+
+	resp, err := lc.fetcher.client.Do(req)
+	if err != nil {
+		return FetchResult{Error: err}
+	}
+	defer resp.Body.Close()
+
+	return FetchResult{
+		StatusCode: resp.StatusCode,
+	}
 }
