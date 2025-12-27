@@ -111,7 +111,9 @@ func TestJSONFormat_MatchesReference(t *testing.T) {
 	// Error может быть пустой строкой, но должен присутствовать в JSON
 	var rawPage map[string]interface{}
 	pageJSON, _ := json.Marshal(page)
-	json.Unmarshal(pageJSON, &rawPage)
+	if err := json.Unmarshal(pageJSON, &rawPage); err != nil {
+		t.Fatalf("Failed to parse JSON: %v", err)
+	}
 
 	requiredKeys := []string{"url", "depth", "http_status", "status", "seo", "broken_links", "assets", "discovered_at"}
 	for _, key := range requiredKeys {
@@ -268,7 +270,9 @@ func TestJSONFormat_ISO8601Timestamps(t *testing.T) {
 	}
 
 	var report Report
-	json.Unmarshal(result, &report)
+	if err := json.Unmarshal(result, &report); err != nil {
+		t.Fatalf("Failed to parse JSON: %v", err)
+	}
 
 	// Проверяем формат generated_at
 	_, err = time.Parse(time.RFC3339, report.GeneratedAt)

@@ -109,7 +109,12 @@ func (f *Fetcher) performRequest(ctx context.Context, urlStr string) FetchResult
 	if err != nil {
 		return FetchResult{Error: err}
 	}
-	defer resp.Body.Close()
+
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Игнорируем ошибку закрытия, так как уже получили нужные данные
+		}
+	}()
 
 	result := FetchResult{StatusCode: resp.StatusCode}
 

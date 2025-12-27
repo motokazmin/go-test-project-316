@@ -61,12 +61,7 @@ type Crawler struct {
 
 // Run запускает процесс обхода
 func (c *Crawler) Run(ctx context.Context) {
-	for {
-		// Проверяем контекст
-		if ctx.Err() != nil {
-			break
-		}
-
+	for ctx.Err() == nil {
 		// Берём URL из очереди
 		item := c.state.Queue.Dequeue()
 
