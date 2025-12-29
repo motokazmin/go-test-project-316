@@ -1,4 +1,4 @@
-package crawler
+package httputil
 
 import (
 	"context"
@@ -7,6 +7,26 @@ import (
 	"strings"
 	"time"
 )
+
+// HTTPClient интерфейс для выполнения HTTP запросов
+type HTTPClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+// FetchResult содержит результат HTTP-запроса
+type FetchResult struct {
+	StatusCode  int
+	HTMLContent string
+	Error       error
+}
+
+// FetcherConfig содержит конфигурацию для Fetcher
+type FetcherConfig struct {
+	Client     HTTPClient
+	UserAgent  string
+	Timeout    time.Duration
+	MaxRetries int
+}
 
 // Fetcher отвечает за выполнение HTTP-запросов с retry логикой
 type Fetcher struct {
@@ -18,14 +38,34 @@ type Fetcher struct {
 }
 
 // NewFetcher создает новый HTTP fetcher
-func NewFetcher(opts Options, rateLimiter *RateLimiter) *Fetcher {
+func NewFetcher(cfg FetcherConfig, rateLimiter *RateLimiter) *Fetcher {
 	return &Fetcher{
-		client:      opts.HTTPClient,
-		userAgent:   opts.UserAgent,
-		timeout:     opts.Timeout,
-		maxRetries:  opts.Retries,
+		client:      cfg.Client,
+		userAgent:   cfg.UserAgent,
+		timeout:     cfg.Timeout,
+		maxRetries:  cfg.MaxRetries,
 		rateLimiter: rateLimiter,
 	}
+}
+
+// Timeout возвращает таймаут запроса
+func (f *Fetcher) Timeout() time.Duration {
+	return f.timeout
+}
+
+// UserAgent возвращает user agent
+func (f *Fetcher) UserAgent() string {
+	return f.userAgent
+}
+
+// Client возвращает HTTP клиент
+func (f *Fetcher) Client() HTTPClient {
+	return f.client
+}
+
+// RateLimiter возвращает rate limiter
+func (f *Fetcher) RateLimiter() *RateLimiter {
+	return f.rateLimiter
 }
 
 // Fetch выполняет HTTP-запрос с retry логикой и rate limiting

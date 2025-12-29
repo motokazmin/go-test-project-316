@@ -1,4 +1,4 @@
-package crawler
+package report
 
 import (
 	"encoding/json"
@@ -6,17 +6,41 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"code/internal/checker"
+	"code/internal/seo"
 )
 
-// ReportBuilder создает и управляет отчетом
-type ReportBuilder struct {
+// Page содержит информацию о странице
+type Page struct {
+	URL          string               `json:"url"`
+	Depth        int                  `json:"depth"`
+	HTTPStatus   int                  `json:"http_status"`
+	Status       string               `json:"status"`
+	Error        string               `json:"error,omitempty"`
+	BrokenLinks  []checker.BrokenLink `json:"broken_links"`
+	DiscoveredAt string               `json:"discovered_at"`
+	SEO          *seo.SEO             `json:"seo"`
+	Assets       []checker.Asset      `json:"assets"`
+}
+
+// Report содержит результат обхода сайта
+type Report struct {
+	RootURL     string `json:"root_url"`
+	Depth       int    `json:"depth"`
+	GeneratedAt string `json:"generated_at"`
+	Pages       []Page `json:"pages"`
+}
+
+// Builder создает и управляет отчетом
+type Builder struct {
 	report *Report
 	mu     sync.Mutex
 }
 
-// NewReportBuilder создает новый builder
-func NewReportBuilder(rootURL *url.URL, depth int) *ReportBuilder {
-	return &ReportBuilder{
+// NewBuilder создает новый builder
+func NewBuilder(rootURL *url.URL, depth int) *Builder {
+	return &Builder{
 		report: &Report{
 			RootURL:     rootURL.String(),
 			Depth:       depth,
@@ -27,7 +51,7 @@ func NewReportBuilder(rootURL *url.URL, depth int) *ReportBuilder {
 }
 
 // AddPage добавляет страницу в отчет (потокобезопасно)
-func (rb *ReportBuilder) AddPage(page Page) {
+func (rb *Builder) AddPage(page Page) {
 	// Для страниц с ошибками оставляем nil
 	if page.Error != "" {
 		page.BrokenLinks = nil
@@ -35,10 +59,10 @@ func (rb *ReportBuilder) AddPage(page Page) {
 	} else {
 		// Для успешных страниц инициализируем пустыми массивами
 		if page.BrokenLinks == nil {
-			page.BrokenLinks = []BrokenLink{}
+			page.BrokenLinks = []checker.BrokenLink{}
 		}
 		if page.Assets == nil {
-			page.Assets = []Asset{}
+			page.Assets = []checker.Asset{}
 		}
 	}
 
@@ -48,7 +72,7 @@ func (rb *ReportBuilder) AddPage(page Page) {
 }
 
 // Encode кодирует отчет в JSON
-func (rb *ReportBuilder) Encode(indent bool) ([]byte, error) {
+func (rb *Builder) Encode(indent bool) ([]byte, error) {
 	rb.mu.Lock()
 	defer rb.mu.Unlock()
 

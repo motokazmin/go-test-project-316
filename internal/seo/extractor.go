@@ -1,4 +1,4 @@
-package crawler
+package seo
 
 import (
 	"strings"
@@ -6,16 +6,25 @@ import (
 	"golang.org/x/net/html"
 )
 
-// SEOExtractor извлекает SEO данные из HTML
-type SEOExtractor struct{}
+// SEO содержит базовые SEO параметры страницы
+type SEO struct {
+	HasTitle       bool   `json:"has_title"`
+	Title          string `json:"title"`
+	HasDescription bool   `json:"has_description"`
+	Description    string `json:"description"`
+	HasH1          bool   `json:"has_h1"`
+}
 
-// NewSEOExtractor создает новый экстрактор
-func NewSEOExtractor() *SEOExtractor {
-	return &SEOExtractor{}
+// Extractor извлекает SEO данные из HTML
+type Extractor struct{}
+
+// NewExtractor создает новый экстрактор
+func NewExtractor() *Extractor {
+	return &Extractor{}
 }
 
 // Extract извлекает SEO параметры
-func (e *SEOExtractor) Extract(htmlContent string) *SEO {
+func (e *Extractor) Extract(htmlContent string) *SEO {
 	seo := &SEO{
 		HasTitle:       false,
 		HasDescription: false,
@@ -35,7 +44,7 @@ func (e *SEOExtractor) Extract(htmlContent string) *SEO {
 }
 
 // extractTitle извлекает title
-func (e *SEOExtractor) extractTitle(doc *html.Node, seo *SEO) {
+func (e *Extractor) extractTitle(doc *html.Node, seo *SEO) {
 	var find func(*html.Node)
 	find = func(n *html.Node) {
 		// Если уже нашли title, не ищем дальше
@@ -58,7 +67,7 @@ func (e *SEOExtractor) extractTitle(doc *html.Node, seo *SEO) {
 }
 
 // extractDescription извлекает meta description
-func (e *SEOExtractor) extractDescription(doc *html.Node, seo *SEO) {
+func (e *Extractor) extractDescription(doc *html.Node, seo *SEO) {
 	var find func(*html.Node)
 	find = func(n *html.Node) {
 		// Если уже нашли description, не ищем дальше
@@ -94,7 +103,7 @@ func (e *SEOExtractor) extractDescription(doc *html.Node, seo *SEO) {
 }
 
 // extractH1 извлекает H1
-func (e *SEOExtractor) extractH1(doc *html.Node, seo *SEO) {
+func (e *Extractor) extractH1(doc *html.Node, seo *SEO) {
 	var find func(*html.Node)
 	find = func(n *html.Node) {
 		// Если уже нашли H1, не ищем дальше

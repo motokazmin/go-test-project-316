@@ -2,9 +2,16 @@ package crawler
 
 import (
 	"context"
-	"net/http"
 	"net/url"
 	"time"
+
+	"code/internal/checker"
+	"code/internal/httputil"
+	"code/internal/parser"
+	"code/internal/report"
+	"code/internal/seo"
+	"code/internal/state"
+	"code/internal/urlutil"
 )
 
 // Analyze анализирует структуру веб-сайта
@@ -13,26 +20,34 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 	normalizeOptions(&opts)
 
 	// 2. Валидируем URL
-	rootURL, err := ParseAndValidateURL(opts.URL)
+	rootURL, err := urlutil.ParseAndValidateURL(opts.URL)
 	if err != nil {
 		return nil, err
 	}
 
 	// 3. Создаем компоненты
-	rateLimiter := NewRateLimiter(ctx, opts.Delay)
-	state := NewCrawlState(rootURL, opts.Concurrency, rateLimiter)
-	fetcher := NewFetcher(opts, rateLimiter)
-	parser := NewHTMLParser()
-	seoExtractor := NewSEOExtractor()
-	linkChecker := NewLinkChecker(fetcher, opts.Concurrency)
-	reportBuilder := NewReportBuilder(rootURL, opts.Depth)
-	assetChecker := NewAssetChecker(fetcher, opts.Concurrency)
+	rateLimiter := httputil.NewRateLimiter(ctx, opts.Delay)
+
+	fetcherCfg := httputil.FetcherConfig{
+		Client:     opts.HTTPClient,
+		UserAgent:  opts.UserAgent,
+		Timeout:    opts.Timeout,
+		MaxRetries: opts.Retries,
+	}
+	fetcher := httputil.NewFetcher(fetcherCfg, rateLimiter)
+
+	crawlState := state.NewCrawlState(rootURL, opts.Concurrency, rateLimiter)
+	htmlParser := parser.NewHTMLParser()
+	seoExtractor := seo.NewExtractor()
+	linkChecker := checker.NewLinkChecker(fetcher, opts.Concurrency)
+	assetChecker := checker.NewAssetChecker(fetcher, htmlParser, opts.Concurrency)
+	reportBuilder := report.NewBuilder(rootURL, opts.Depth)
 
 	// 4. Создаем crawler
 	crawler := &Crawler{
-		state:         state,
+		state:         crawlState,
 		fetcher:       fetcher,
-		parser:        parser,
+		parser:        htmlParser,
 		seoExtractor:  seoExtractor,
 		linkChecker:   linkChecker,
 		assetChecker:  assetChecker,
@@ -49,13 +64,13 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 
 // Crawler координирует процесс обхода сайта
 type Crawler struct {
-	state         *CrawlState
-	fetcher       *Fetcher
-	parser        *HTMLParser
-	seoExtractor  *SEOExtractor
-	linkChecker   *LinkChecker
-	assetChecker  *AssetChecker
-	reportBuilder *ReportBuilder
+	state         *state.CrawlState
+	fetcher       *httputil.Fetcher
+	parser        *parser.HTMLParser
+	seoExtractor  *seo.Extractor
+	linkChecker   *checker.LinkChecker
+	assetChecker  *checker.AssetChecker
+	reportBuilder *report.Builder
 	maxDepth      int
 }
 
@@ -78,7 +93,7 @@ func (c *Crawler) Run(ctx context.Context) {
 		}
 
 		// Обрабатываем URL
-		c.processURLWithWorker(ctx, item.url, item.depth)
+		c.processURLWithWorker(ctx, item.URL, item.Depth)
 	}
 
 	// Финальное ожидание завершения всех воркеров
@@ -112,7 +127,7 @@ func (c *Crawler) processSingleURL(ctx context.Context, urlStr string, depth int
 
 	c.state.Visited.Add(urlStr)
 
-	page := Page{
+	page := report.Page{
 		URL:   urlStr,
 		Depth: depth,
 	}
@@ -123,16 +138,16 @@ func (c *Crawler) processSingleURL(ctx context.Context, urlStr string, depth int
 
 	if result.Error != nil {
 		page.Error = result.Error.Error()
-		SetPageStatus(&page)
+		report.SetPageStatus(&page)
 		page.DiscoveredAt = time.Now().UTC().Format(time.RFC3339)
-		page.SEO = &SEO{}
-		page.BrokenLinks = []BrokenLink{}
-		page.Assets = []Asset{}
+		page.SEO = &seo.SEO{}
+		page.BrokenLinks = []checker.BrokenLink{}
+		page.Assets = []checker.Asset{}
 		c.reportBuilder.AddPage(page)
 		return
 	}
 
-	SetPageStatus(&page)
+	report.SetPageStatus(&page)
 
 	if result.HTMLContent != "" {
 		pageURL, _ := url.Parse(urlStr)
@@ -157,9 +172,9 @@ func (c *Crawler) processSingleURL(ctx context.Context, urlStr string, depth int
 	} else {
 		// Если нет HTML контента, но запрос был успешен
 		page.DiscoveredAt = time.Now().UTC().Format(time.RFC3339)
-		page.SEO = &SEO{}
-		page.BrokenLinks = []BrokenLink{}
-		page.Assets = []Asset{}
+		page.SEO = &seo.SEO{}
+		page.BrokenLinks = []checker.BrokenLink{}
+		page.Assets = []checker.Asset{}
 	}
 
 	c.reportBuilder.AddPage(page)
@@ -167,35 +182,22 @@ func (c *Crawler) processSingleURL(ctx context.Context, urlStr string, depth int
 
 // enqueueInternalLinks добавляет внутренние ссылки в очередь
 func (c *Crawler) enqueueInternalLinks(links []string, depth int) {
-	toAdd := []urlWithDepth{}
+	toAdd := []state.URLWithDepth{}
 
 	for _, link := range links {
 		linkURL, err := url.Parse(link)
-		if err != nil || !IsSameDomain(linkURL, c.state.BaseURL) {
+		if err != nil || !urlutil.IsSameDomain(linkURL, c.state.BaseURL) {
 			continue
 		}
 
 		// Нормализуем URL перед добавлением
-		normalized := NormalizeURL(linkURL)
+		normalized := urlutil.NormalizeURL(linkURL)
 		if !c.state.Visited.Contains(normalized) {
-			toAdd = append(toAdd, urlWithDepth{url: normalized, depth: depth})
+			toAdd = append(toAdd, state.URLWithDepth{URL: normalized, Depth: depth})
 		}
 	}
 
 	if len(toAdd) > 0 {
 		c.state.Queue.Enqueue(toAdd)
-	}
-}
-
-// normalizeOptions устанавливает значения по умолчанию
-func normalizeOptions(opts *Options) {
-	if opts.HTTPClient == nil {
-		opts.HTTPClient = &http.Client{}
-	}
-	if opts.Concurrency <= 0 {
-		opts.Concurrency = 4
-	}
-	if opts.Timeout <= 0 {
-		opts.Timeout = 15 * time.Second
 	}
 }

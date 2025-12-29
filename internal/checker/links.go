@@ -1,20 +1,29 @@
-package crawler
+package checker
 
 import (
 	"context"
 	"net/http"
 	"sync"
 	"time"
+
+	"code/internal/httputil"
 )
+
+// BrokenLink содержит информацию о битой ссылке
+type BrokenLink struct {
+	URL        string `json:"url"`
+	StatusCode int    `json:"status_code"`
+	Error      string `json:"error"`
+}
 
 // LinkChecker проверяет доступность ссылок
 type LinkChecker struct {
-	fetcher *Fetcher
+	fetcher *httputil.Fetcher
 	workers int
 }
 
 // NewLinkChecker создает новый checker
-func NewLinkChecker(fetcher *Fetcher, workers int) *LinkChecker {
+func NewLinkChecker(fetcher *httputil.Fetcher, workers int) *LinkChecker {
 	return &LinkChecker{
 		fetcher: fetcher,
 		workers: workers,
@@ -82,20 +91,20 @@ func (lc *LinkChecker) checkSingleLink(ctx context.Context, linkURL string) (Bro
 }
 
 // headRequest выполняет HEAD запрос с retry логикой
-func (lc *LinkChecker) headRequest(ctx context.Context, urlStr string) FetchResult {
+func (lc *LinkChecker) headRequest(ctx context.Context, urlStr string) httputil.FetchResult {
 	maxRetries := 2 // Используем меньше retry для broken links проверки
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		// Проверяем отмену контекста
 		if ctx.Err() != nil {
-			return FetchResult{Error: ctx.Err()}
+			return httputil.FetchResult{Error: ctx.Err()}
 		}
 
 		// Задержка перед повторной попыткой (не для первой)
 		if attempt > 0 {
 			select {
 			case <-ctx.Done():
-				return FetchResult{Error: ctx.Err()}
+				return httputil.FetchResult{Error: ctx.Err()}
 			case <-time.After(100 * time.Millisecond):
 			}
 		}
@@ -114,11 +123,11 @@ func (lc *LinkChecker) headRequest(ctx context.Context, urlStr string) FetchResu
 		}
 	}
 
-	return FetchResult{}
+	return httputil.FetchResult{}
 }
 
 // shouldRetry определяет нужен ли retry
-func (lc *LinkChecker) shouldRetry(result FetchResult) bool {
+func (lc *LinkChecker) shouldRetry(result httputil.FetchResult) bool {
 	// Сетевая ошибка - retry
 	if result.Error != nil {
 		return true
@@ -138,37 +147,37 @@ func (lc *LinkChecker) shouldRetry(result FetchResult) bool {
 }
 
 // performHeadRequest выполняет один HEAD запрос
-func (lc *LinkChecker) performHeadRequest(ctx context.Context, urlStr string) FetchResult {
+func (lc *LinkChecker) performHeadRequest(ctx context.Context, urlStr string) httputil.FetchResult {
 	// Rate limiting
-	if lc.fetcher.rateLimiter != nil {
-		if !lc.fetcher.rateLimiter.Wait(ctx) {
-			return FetchResult{Error: ctx.Err()}
+	if rl := lc.fetcher.RateLimiter(); rl != nil {
+		if !rl.Wait(ctx) {
+			return httputil.FetchResult{Error: ctx.Err()}
 		}
 	}
 
-	timeoutCtx, cancel := context.WithTimeout(ctx, lc.fetcher.timeout)
+	timeoutCtx, cancel := context.WithTimeout(ctx, lc.fetcher.Timeout())
 	defer cancel()
 
 	// Используем HEAD вместо GET
 	req, err := http.NewRequestWithContext(timeoutCtx, http.MethodHead, urlStr, nil)
 	if err != nil {
-		return FetchResult{Error: err}
+		return httputil.FetchResult{Error: err}
 	}
 
-	if lc.fetcher.userAgent != "" {
-		req.Header.Set("User-Agent", lc.fetcher.userAgent)
+	if lc.fetcher.UserAgent() != "" {
+		req.Header.Set("User-Agent", lc.fetcher.UserAgent())
 	}
 
-	resp, err := lc.fetcher.client.Do(req)
+	resp, err := lc.fetcher.Client().Do(req)
 	if err != nil {
-		return FetchResult{Error: err}
+		return httputil.FetchResult{Error: err}
 	}
 
 	defer func() {
 		_ = resp.Body.Close()
 	}()
 
-	return FetchResult{
+	return httputil.FetchResult{
 		StatusCode: resp.StatusCode,
 	}
 }

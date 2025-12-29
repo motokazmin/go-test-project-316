@@ -1,4 +1,4 @@
-package crawler
+package checker
 
 import (
 	"context"
@@ -8,20 +8,43 @@ import (
 	"net/url"
 	"sort"
 	"sync"
+
+	"code/internal/httputil"
+	"code/internal/parser"
 )
+
+// Asset содержит информацию об ассете (картинка, скрипт, стиль)
+type Asset struct {
+	URL        string `json:"url"`
+	Type       string `json:"type"`
+	StatusCode int    `json:"status_code"`
+	SizeBytes  int64  `json:"size_bytes"`
+	Error      string `json:"error,omitempty"`
+}
+
+// AssetResult содержит результат проверки ассета
+type AssetResult struct {
+	URL        string
+	Type       string
+	StatusCode int
+	SizeBytes  int64
+	Error      error
+}
 
 // AssetChecker проверяет ассеты и кэширует результаты
 type AssetChecker struct {
-	fetcher    *Fetcher
+	fetcher    *httputil.Fetcher
+	parser     *parser.HTMLParser
 	workers    int
 	cache      map[string]Asset
 	cacheMutex sync.RWMutex
 }
 
 // NewAssetChecker создает новый checker для ассетов
-func NewAssetChecker(fetcher *Fetcher, workers int) *AssetChecker {
+func NewAssetChecker(fetcher *httputil.Fetcher, htmlParser *parser.HTMLParser, workers int) *AssetChecker {
 	return &AssetChecker{
 		fetcher: fetcher,
+		parser:  htmlParser,
 		workers: workers,
 		cache:   make(map[string]Asset),
 	}
@@ -36,28 +59,28 @@ type assetWithIndex struct {
 // CheckAssets проверяет все ассеты на странице
 func (ac *AssetChecker) CheckAssets(ctx context.Context, htmlContent string, pageURL *url.URL) []Asset {
 	// Извлекаем ассеты из HTML
-	assetURLs := ac.extractAssetURLs(htmlContent, pageURL)
+	assetInfos := ac.parser.ExtractAssets(htmlContent, pageURL)
 
-	if len(assetURLs) == 0 {
+	if len(assetInfos) == 0 {
 		return []Asset{}
 	}
 
 	// Проверяем ассеты параллельно с учетом кэша и сохранением порядка
 	semaphore := make(chan struct{}, ac.workers)
-	resultChan := make(chan assetWithIndex, len(assetURLs))
+	resultChan := make(chan assetWithIndex, len(assetInfos))
 	var wg sync.WaitGroup
 
-	for i, assetInfo := range assetURLs {
+	for i, info := range assetInfos {
 		wg.Add(1)
 		semaphore <- struct{}{}
 
-		go func(index int, url, assetType string) {
+		go func(index int, assetURL, assetType string) {
 			defer wg.Done()
 			defer func() { <-semaphore }()
 
-			asset := ac.checkSingleAsset(ctx, url, assetType)
+			asset := ac.checkSingleAsset(ctx, assetURL, assetType)
 			resultChan <- assetWithIndex{asset: asset, index: index}
-		}(i, assetInfo.url, assetInfo.assetType)
+		}(i, info.URL, info.AssetType)
 	}
 
 	go func() {
@@ -72,8 +95,8 @@ func (ac *AssetChecker) CheckAssets(ctx context.Context, htmlContent string, pag
 	}
 
 	// Восстанавливаем исходный порядок
-	assets := make([]Asset, len(assetURLs))
-	for i := 0; i < len(assetURLs); i++ {
+	assets := make([]Asset, len(assetInfos))
+	for i := 0; i < len(assetInfos); i++ {
 		assets[i] = results[i]
 	}
 
@@ -83,18 +106,6 @@ func (ac *AssetChecker) CheckAssets(ctx context.Context, htmlContent string, pag
 	})
 
 	return assets
-}
-
-// assetInfo содержит информацию об ассете из HTML
-type assetInfo struct {
-	url       string
-	assetType string
-}
-
-// extractAssetURLs извлекает URL ассетов из HTML
-func (ac *AssetChecker) extractAssetURLs(htmlContent string, pageURL *url.URL) []assetInfo {
-	parser := NewHTMLParser()
-	return parser.ExtractAssets(htmlContent, pageURL)
 }
 
 // checkSingleAsset проверяет один ассет с использованием кэша
@@ -134,13 +145,13 @@ func (ac *AssetChecker) checkSingleAsset(ctx context.Context, assetURL, assetTyp
 // fetchAsset выполняет HTTP-запрос для ассета
 func (ac *AssetChecker) fetchAsset(ctx context.Context, assetURL string) AssetResult {
 	// Rate limiting через fetcher
-	if ac.fetcher.rateLimiter != nil {
-		if !ac.fetcher.rateLimiter.Wait(ctx) {
+	if rl := ac.fetcher.RateLimiter(); rl != nil {
+		if !rl.Wait(ctx) {
 			return AssetResult{Error: ctx.Err()}
 		}
 	}
 
-	timeoutCtx, cancel := context.WithTimeout(ctx, ac.fetcher.timeout)
+	timeoutCtx, cancel := context.WithTimeout(ctx, ac.fetcher.Timeout())
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(timeoutCtx, http.MethodGet, assetURL, nil)
@@ -148,11 +159,11 @@ func (ac *AssetChecker) fetchAsset(ctx context.Context, assetURL string) AssetRe
 		return AssetResult{Error: err}
 	}
 
-	if ac.fetcher.userAgent != "" {
-		req.Header.Set("User-Agent", ac.fetcher.userAgent)
+	if ac.fetcher.UserAgent() != "" {
+		req.Header.Set("User-Agent", ac.fetcher.UserAgent())
 	}
 
-	resp, err := ac.fetcher.client.Do(req)
+	resp, err := ac.fetcher.Client().Do(req)
 	if err != nil {
 		return AssetResult{Error: err}
 	}

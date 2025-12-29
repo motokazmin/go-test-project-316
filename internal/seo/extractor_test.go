@@ -1,11 +1,11 @@
-package crawler
+package seo
 
 import (
 	"testing"
 )
 
-func TestSEOExtractor_NoElements(t *testing.T) {
-	extractor := NewSEOExtractor()
+func TestExtractor_NoElements(t *testing.T) {
+	extractor := NewExtractor()
 	html := `<html><body><p>No SEO elements</p></body></html>`
 
 	seo := extractor.Extract(html)
@@ -29,8 +29,8 @@ func TestSEOExtractor_NoElements(t *testing.T) {
 	}
 }
 
-func TestSEOExtractor_EmptyElements(t *testing.T) {
-	extractor := NewSEOExtractor()
+func TestExtractor_EmptyElements(t *testing.T) {
+	extractor := NewExtractor()
 	html := `
         <html>
         <head>
@@ -67,8 +67,8 @@ func TestSEOExtractor_EmptyElements(t *testing.T) {
 	}
 }
 
-func TestSEOExtractor_WithContent(t *testing.T) {
-	extractor := NewSEOExtractor()
+func TestExtractor_WithContent(t *testing.T) {
+	extractor := NewExtractor()
 	html := `
         <html>
         <head>
@@ -105,8 +105,8 @@ func TestSEOExtractor_WithContent(t *testing.T) {
 	}
 }
 
-func TestSEOExtractor_WhitespaceHandling(t *testing.T) {
-	extractor := NewSEOExtractor()
+func TestExtractor_WhitespaceHandling(t *testing.T) {
+	extractor := NewExtractor()
 	html := `
         <html>
         <head>
@@ -135,8 +135,8 @@ func TestSEOExtractor_WhitespaceHandling(t *testing.T) {
 	}
 }
 
-func TestSEOExtractor_MultipleElements(t *testing.T) {
-	extractor := NewSEOExtractor()
+func TestExtractor_MultipleElements(t *testing.T) {
+	extractor := NewExtractor()
 	html := `
         <html>
         <head>
@@ -163,8 +163,8 @@ func TestSEOExtractor_MultipleElements(t *testing.T) {
 	}
 }
 
-func TestSEOExtractor_NestedText(t *testing.T) {
-	extractor := NewSEOExtractor()
+func TestExtractor_NestedText(t *testing.T) {
+	extractor := NewExtractor()
 	html := `
         <html>
         <body>
@@ -181,8 +181,8 @@ func TestSEOExtractor_NestedText(t *testing.T) {
 	}
 }
 
-func TestSEOExtractor_InvalidHTML(t *testing.T) {
-	extractor := NewSEOExtractor()
+func TestExtractor_InvalidHTML(t *testing.T) {
+	extractor := NewExtractor()
 	html := `<html><head><title>Valid Title`
 
 	seo := extractor.Extract(html)

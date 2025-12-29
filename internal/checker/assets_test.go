@@ -1,4 +1,4 @@
-package crawler
+package checker
 
 import (
 	"context"
@@ -9,7 +9,19 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"code/internal/httputil"
+	"code/internal/parser"
 )
+
+// MockHTTPClient для подмены реальных HTTP запросов
+type MockHTTPClient struct {
+	DoFunc func(req *http.Request) (*http.Response, error)
+}
+
+func (m *MockHTTPClient) Do(req *http.Request) (*http.Response, error) {
+	return m.DoFunc(req)
+}
 
 // Тест 1: Базовая проверка ассета с Content-Length
 func TestAssetChecker_WithContentLength(t *testing.T) {
@@ -26,13 +38,14 @@ func TestAssetChecker_WithContentLength(t *testing.T) {
 		},
 	}
 
-	opts := Options{
-		HTTPClient: mockClient,
-		Timeout:    5 * time.Second,
+	cfg := httputil.FetcherConfig{
+		Client:  mockClient,
+		Timeout: 5 * time.Second,
 	}
 
-	fetcher := NewFetcher(opts, nil)
-	checker := NewAssetChecker(fetcher, 4)
+	fetcher := httputil.NewFetcher(cfg, nil)
+	htmlParser := parser.NewHTMLParser()
+	checker := NewAssetChecker(fetcher, htmlParser, 4)
 
 	result := checker.fetchAsset(context.Background(), "https://example.com/logo.png")
 
@@ -62,13 +75,14 @@ func TestAssetChecker_WithoutContentLength(t *testing.T) {
 		},
 	}
 
-	opts := Options{
-		HTTPClient: mockClient,
-		Timeout:    5 * time.Second,
+	cfg := httputil.FetcherConfig{
+		Client:  mockClient,
+		Timeout: 5 * time.Second,
 	}
 
-	fetcher := NewFetcher(opts, nil)
-	checker := NewAssetChecker(fetcher, 4)
+	fetcher := httputil.NewFetcher(cfg, nil)
+	htmlParser := parser.NewHTMLParser()
+	checker := NewAssetChecker(fetcher, htmlParser, 4)
 
 	result := checker.fetchAsset(context.Background(), "https://example.com/script.js")
 
@@ -92,13 +106,14 @@ func TestAssetChecker_NotFound(t *testing.T) {
 		},
 	}
 
-	opts := Options{
-		HTTPClient: mockClient,
-		Timeout:    5 * time.Second,
+	cfg := httputil.FetcherConfig{
+		Client:  mockClient,
+		Timeout: 5 * time.Second,
 	}
 
-	fetcher := NewFetcher(opts, nil)
-	checker := NewAssetChecker(fetcher, 4)
+	fetcher := httputil.NewFetcher(cfg, nil)
+	htmlParser := parser.NewHTMLParser()
+	checker := NewAssetChecker(fetcher, htmlParser, 4)
 
 	result := checker.fetchAsset(context.Background(), "https://example.com/missing.png")
 
@@ -118,13 +133,14 @@ func TestAssetChecker_NetworkError(t *testing.T) {
 		},
 	}
 
-	opts := Options{
-		HTTPClient: mockClient,
-		Timeout:    5 * time.Second,
+	cfg := httputil.FetcherConfig{
+		Client:  mockClient,
+		Timeout: 5 * time.Second,
 	}
 
-	fetcher := NewFetcher(opts, nil)
-	checker := NewAssetChecker(fetcher, 4)
+	fetcher := httputil.NewFetcher(cfg, nil)
+	htmlParser := parser.NewHTMLParser()
+	checker := NewAssetChecker(fetcher, htmlParser, 4)
 
 	result := checker.fetchAsset(context.Background(), "https://example.com/logo.png")
 
@@ -151,13 +167,14 @@ func TestAssetChecker_Caching(t *testing.T) {
 		},
 	}
 
-	opts := Options{
-		HTTPClient: mockClient,
-		Timeout:    5 * time.Second,
+	cfg := httputil.FetcherConfig{
+		Client:  mockClient,
+		Timeout: 5 * time.Second,
 	}
 
-	fetcher := NewFetcher(opts, nil)
-	checker := NewAssetChecker(fetcher, 4)
+	fetcher := httputil.NewFetcher(cfg, nil)
+	htmlParser := parser.NewHTMLParser()
+	checker := NewAssetChecker(fetcher, htmlParser, 4)
 
 	assetURL := "https://example.com/logo.png"
 
@@ -200,10 +217,10 @@ func TestHTMLParser_ExtractAssets(t *testing.T) {
         </html>
     `
 
-	parser := NewHTMLParser()
+	htmlParser := parser.NewHTMLParser()
 	pageURL, _ := url.Parse("https://example.com/page")
 
-	assets := parser.ExtractAssets(html, pageURL)
+	assets := htmlParser.ExtractAssets(html, pageURL)
 
 	// Проверяем количество
 	expectedCount := 5
@@ -217,7 +234,7 @@ func TestHTMLParser_ExtractAssets(t *testing.T) {
 	styleCount := 0
 
 	for _, asset := range assets {
-		switch asset.assetType {
+		switch asset.AssetType {
 		case "image":
 			imageCount++
 		case "script":
@@ -272,13 +289,14 @@ func TestAssetChecker_CheckAssets(t *testing.T) {
 		},
 	}
 
-	opts := Options{
-		HTTPClient: mockClient,
-		Timeout:    5 * time.Second,
+	cfg := httputil.FetcherConfig{
+		Client:  mockClient,
+		Timeout: 5 * time.Second,
 	}
 
-	fetcher := NewFetcher(opts, nil)
-	checker := NewAssetChecker(fetcher, 4)
+	fetcher := httputil.NewFetcher(cfg, nil)
+	htmlParser := parser.NewHTMLParser()
+	checker := NewAssetChecker(fetcher, htmlParser, 4)
 
 	html := `
         <html>
@@ -316,7 +334,8 @@ func TestAssetChecker_CheckAssets(t *testing.T) {
 	var brokenAsset *Asset
 	for _, asset := range assets {
 		if strings.Contains(asset.URL, "missing.jpg") {
-			brokenAsset = &asset
+			a := asset
+			brokenAsset = &a
 			break
 		}
 	}

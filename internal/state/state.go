@@ -1,32 +1,40 @@
-package crawler
+package state
 
 import (
 	"net/url"
 	"sync"
+
+	"code/internal/httputil"
 )
+
+// URLWithDepth представляет URL с его глубиной в дереве обхода
+type URLWithDepth struct {
+	URL   string
+	Depth int
+}
 
 // URLQueue управляет очередью URL для обхода
 type URLQueue struct {
-	items []urlWithDepth
+	items []URLWithDepth
 	mu    sync.Mutex
 }
 
 // NewURLQueue создает новую очередь
 func NewURLQueue(rootURL string) *URLQueue {
 	return &URLQueue{
-		items: []urlWithDepth{{url: rootURL, depth: 0}},
+		items: []URLWithDepth{{URL: rootURL, Depth: 0}},
 	}
 }
 
 // Enqueue добавляет URL в очередь
-func (q *URLQueue) Enqueue(urls []urlWithDepth) {
+func (q *URLQueue) Enqueue(urls []URLWithDepth) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.items = append(q.items, urls...)
 }
 
 // Dequeue извлекает следующий URL
-func (q *URLQueue) Dequeue() *urlWithDepth {
+func (q *URLQueue) Dequeue() *URLWithDepth {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -80,11 +88,11 @@ type CrawlState struct {
 	Visited     *VisitedSet
 	Semaphore   chan struct{}
 	WG          sync.WaitGroup
-	RateLimiter *RateLimiter
+	RateLimiter *httputil.RateLimiter
 }
 
 // NewCrawlState создает новое состояние
-func NewCrawlState(rootURL *url.URL, workers int, rateLimiter *RateLimiter) *CrawlState {
+func NewCrawlState(rootURL *url.URL, workers int, rateLimiter *httputil.RateLimiter) *CrawlState {
 	return &CrawlState{
 		BaseURL:     rootURL,
 		Queue:       NewURLQueue(rootURL.String()),
