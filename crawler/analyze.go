@@ -14,18 +14,14 @@ import (
 	"code/internal/urlutil"
 )
 
-// Analyze анализирует структуру веб-сайта
 func Analyze(ctx context.Context, opts Options) ([]byte, error) {
-	// 1. Нормализуем опции
 	normalizeOptions(&opts)
 
-	// 2. Валидируем URL
 	rootURL, err := urlutil.ParseAndValidateURL(opts.URL)
 	if err != nil {
 		return nil, err
 	}
 
-	// 3. Создаем компоненты
 	rateLimiter := httputil.NewRateLimiter(ctx, opts.Delay)
 
 	fetcherCfg := httputil.FetcherConfig{
@@ -43,7 +39,6 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 	assetChecker := checker.NewAssetChecker(fetcher, htmlParser, opts.Concurrency)
 	reportBuilder := report.NewBuilder(rootURL, opts.Depth)
 
-	// 4. Создаем crawler
 	crawler := &Crawler{
 		state:         crawlState,
 		fetcher:       fetcher,
@@ -55,14 +50,11 @@ func Analyze(ctx context.Context, opts Options) ([]byte, error) {
 		maxDepth:      opts.Depth,
 	}
 
-	// 5. Запускаем обход
 	crawler.Run(ctx)
 
-	// 6. Возвращаем отчет
 	return reportBuilder.Encode(opts.IndentJSON)
 }
 
-// Crawler координирует процесс обхода сайта
 type Crawler struct {
 	state         *state.CrawlState
 	fetcher       *httputil.Fetcher
@@ -74,33 +66,27 @@ type Crawler struct {
 	maxDepth      int
 }
 
-// Run запускает процесс обхода
 func (c *Crawler) Run(ctx context.Context) {
 	for ctx.Err() == nil {
-		// Берём URL из очереди
 		item := c.state.Queue.Dequeue()
 
-		// Если очереди пуста, ждём завершения всех воркеров
+		// Если очередь пуста, ждём завершения всех воркеров
 		if item == nil {
 			c.state.WG.Wait()
 
-			// После завершения воркеров проверяем очередь снова
-			// (воркеры могли добавить новые URL)
+			// Проверяем очередь снова — воркеры могли добавить новые URL
 			if c.state.Queue.IsEmpty() {
 				break
 			}
 			continue
 		}
 
-		// Обрабатываем URL
 		c.processURLWithWorker(ctx, item.URL, item.Depth)
 	}
 
-	// Финальное ожидание завершения всех воркеров
 	c.state.WG.Wait()
 }
 
-// processURLWithWorker обрабатывает URL в отдельном worker'е
 func (c *Crawler) processURLWithWorker(ctx context.Context, urlStr string, depth int) {
 	c.state.WG.Add(1)
 	c.state.Semaphore <- struct{}{}
@@ -113,7 +99,6 @@ func (c *Crawler) processURLWithWorker(ctx context.Context, urlStr string, depth
 	}()
 }
 
-// processSingleURL обрабатывает один URL
 func (c *Crawler) processSingleURL(ctx context.Context, urlStr string, depth int) {
 	select {
 	case <-ctx.Done():
@@ -132,7 +117,6 @@ func (c *Crawler) processSingleURL(ctx context.Context, urlStr string, depth int
 		Depth: depth,
 	}
 
-	// Выполняем HTTP-запрос
 	result := c.fetcher.Fetch(ctx, urlStr)
 	page.HTTPStatus = result.StatusCode
 
@@ -152,25 +136,16 @@ func (c *Crawler) processSingleURL(ctx context.Context, urlStr string, depth int
 	if result.HTMLContent != "" {
 		pageURL, _ := url.Parse(urlStr)
 
-		// Извлекаем SEO данные
 		page.SEO = c.seoExtractor.Extract(result.HTMLContent)
-
-		// Извлекаем ссылки
 		links := c.parser.ExtractLinks(result.HTMLContent, pageURL)
-
-		// Проверяем битые ссылки
 		page.BrokenLinks, page.DiscoveredAt = c.linkChecker.CheckLinks(ctx, links)
-
-		// Проверяем ассеты
 		page.Assets = c.assetChecker.CheckAssets(ctx, result.HTMLContent, pageURL)
 
-		// Добавляем внутренние ссылки в очередь
-		// depth+1 < maxDepth означает: следующий уровень не превысит maxDepth
+		// Добавляем внутренние ссылки в очередь только если не достигли maxDepth
 		if depth+1 < c.maxDepth && page.Status == "ok" {
 			c.enqueueInternalLinks(links, depth+1)
 		}
 	} else {
-		// Если нет HTML контента, но запрос был успешен
 		page.DiscoveredAt = time.Now().UTC().Format(time.RFC3339)
 		page.SEO = &seo.SEO{}
 		page.BrokenLinks = []checker.BrokenLink{}
@@ -180,7 +155,6 @@ func (c *Crawler) processSingleURL(ctx context.Context, urlStr string, depth int
 	c.reportBuilder.AddPage(page)
 }
 
-// enqueueInternalLinks добавляет внутренние ссылки в очередь
 func (c *Crawler) enqueueInternalLinks(links []string, depth int) {
 	toAdd := []state.URLWithDepth{}
 
@@ -190,7 +164,6 @@ func (c *Crawler) enqueueInternalLinks(links []string, depth int) {
 			continue
 		}
 
-		// Нормализуем URL перед добавлением
 		normalized := urlutil.NormalizeURL(linkURL)
 		if !c.state.Visited.Contains(normalized) {
 			toAdd = append(toAdd, state.URLWithDepth{URL: normalized, Depth: depth})

@@ -6,7 +6,6 @@ import (
 	"strings"
 )
 
-// ParseAndValidateURL парсит и валидирует URL
 func ParseAndValidateURL(urlStr string) (*url.URL, error) {
 	normalized := NormalizeURLString(urlStr)
 
@@ -22,7 +21,6 @@ func ParseAndValidateURL(urlStr string) (*url.URL, error) {
 	return parsedURL, nil
 }
 
-// NormalizeURLString добавляет схему если её нет
 func NormalizeURLString(urlStr string) string {
 	if !strings.Contains(urlStr, "://") {
 		return "https://" + urlStr
@@ -30,16 +28,11 @@ func NormalizeURLString(urlStr string) string {
 	return urlStr
 }
 
-// NormalizeURL нормализует URL для избежания дубликатов
-// Убирает trailing slash для корневого пути и fragment
+// NormalizeURL убирает fragment и trailing slash для избежания дубликатов
 func NormalizeURL(u *url.URL) string {
-	// Клонируем URL чтобы не модифицировать оригинал
 	normalized := *u
-
-	// Убираем fragment (#section)
 	normalized.Fragment = ""
 
-	// Убираем trailing slash только для корневого пути
 	if normalized.Path == "/" {
 		normalized.Path = ""
 	}
@@ -47,12 +40,12 @@ func NormalizeURL(u *url.URL) string {
 	return normalized.String()
 }
 
-// IsSameDomain проверяет что URL в пределах одного домена
 func IsSameDomain(linkURL, baseURL *url.URL) bool {
 	return linkURL.Host == baseURL.Host
 }
 
-// ResolveURL преобразует относительный URL в абсолютный
+// ResolveURL преобразует относительный URL в абсолютный.
+// Пропускает: якоря, javascript:, mailto:, tel:
 func ResolveURL(href string, baseURL *url.URL) string {
 	if href == "" {
 		return ""

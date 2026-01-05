@@ -18,12 +18,11 @@ type SEO struct {
 // Extractor извлекает SEO данные из HTML
 type Extractor struct{}
 
-// NewExtractor создает новый экстрактор
 func NewExtractor() *Extractor {
 	return &Extractor{}
 }
 
-// Extract извлекает SEO параметры
+// Extract извлекает title, description и проверяет наличие H1
 func (e *Extractor) Extract(htmlContent string) *SEO {
 	seo := &SEO{
 		HasTitle:       false,
@@ -43,18 +42,15 @@ func (e *Extractor) Extract(htmlContent string) *SEO {
 	return seo
 }
 
-// extractTitle извлекает title
 func (e *Extractor) extractTitle(doc *html.Node, seo *SEO) {
 	var find func(*html.Node)
 	find = func(n *html.Node) {
-		// Если уже нашли title, не ищем дальше
 		if seo.HasTitle {
 			return
 		}
 
 		if n.Type == html.ElementNode && n.Data == "title" {
 			seo.HasTitle = true
-			// Используем extractTextContent для корректной работы с XML
 			seo.Title = extractTextContent(n)
 			return
 		}
@@ -66,11 +62,9 @@ func (e *Extractor) extractTitle(doc *html.Node, seo *SEO) {
 	find(doc)
 }
 
-// extractDescription извлекает meta description
 func (e *Extractor) extractDescription(doc *html.Node, seo *SEO) {
 	var find func(*html.Node)
 	find = func(n *html.Node) {
-		// Если уже нашли description, не ищем дальше
 		if seo.HasDescription {
 			return
 		}
@@ -102,11 +96,9 @@ func (e *Extractor) extractDescription(doc *html.Node, seo *SEO) {
 	find(doc)
 }
 
-// extractH1 извлекает H1
 func (e *Extractor) extractH1(doc *html.Node, seo *SEO) {
 	var find func(*html.Node)
 	find = func(n *html.Node) {
-		// Если уже нашли H1, не ищем дальше
 		if seo.HasH1 {
 			return
 		}
@@ -123,7 +115,6 @@ func (e *Extractor) extractH1(doc *html.Node, seo *SEO) {
 	find(doc)
 }
 
-// extractTextContent извлекает текст из узла с нормализацией пробелов
 func extractTextContent(n *html.Node) string {
 	if n == nil {
 		return ""
@@ -133,7 +124,6 @@ func extractTextContent(n *html.Node) string {
 	var extract func(*html.Node)
 	extract = func(node *html.Node) {
 		if node.Type == html.TextNode {
-			// Разбиваем на слова и убираем пустые
 			words := strings.Fields(node.Data)
 			parts = append(parts, words...)
 		}

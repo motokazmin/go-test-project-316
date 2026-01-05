@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// HTTPClient интерфейс для выполнения HTTP запросов
+// HTTPClient — интерфейс для выполнения HTTP запросов
 type HTTPClient interface {
 	Do(req *http.Request) (*http.Response, error)
 }
@@ -20,7 +20,6 @@ type FetchResult struct {
 	Error       error
 }
 
-// FetcherConfig содержит конфигурацию для Fetcher
 type FetcherConfig struct {
 	Client     HTTPClient
 	UserAgent  string
@@ -28,7 +27,7 @@ type FetcherConfig struct {
 	MaxRetries int
 }
 
-// Fetcher отвечает за выполнение HTTP-запросов с retry логикой
+// Fetcher выполняет HTTP-запросы с retry логикой и rate limiting
 type Fetcher struct {
 	client      HTTPClient
 	userAgent   string
@@ -37,7 +36,6 @@ type Fetcher struct {
 	rateLimiter *RateLimiter
 }
 
-// NewFetcher создает новый HTTP fetcher
 func NewFetcher(cfg FetcherConfig, rateLimiter *RateLimiter) *Fetcher {
 	return &Fetcher{
 		client:      cfg.Client,
@@ -48,85 +46,67 @@ func NewFetcher(cfg FetcherConfig, rateLimiter *RateLimiter) *Fetcher {
 	}
 }
 
-// Timeout возвращает таймаут запроса
 func (f *Fetcher) Timeout() time.Duration {
 	return f.timeout
 }
 
-// UserAgent возвращает user agent
 func (f *Fetcher) UserAgent() string {
 	return f.userAgent
 }
 
-// Client возвращает HTTP клиент
 func (f *Fetcher) Client() HTTPClient {
 	return f.client
 }
 
-// RateLimiter возвращает rate limiter
 func (f *Fetcher) RateLimiter() *RateLimiter {
 	return f.rateLimiter
 }
 
-// Fetch выполняет HTTP-запрос с retry логикой и rate limiting
-// Между попытками задержка 100ms
+// Fetch выполняет HTTP-запрос с retry логикой.
+// Retry выполняется при: сетевых ошибках, HTTP 429, HTTP 5xx.
 func (f *Fetcher) Fetch(ctx context.Context, url string) FetchResult {
 	for attempt := 0; attempt <= f.maxRetries; attempt++ {
-		// Проверяем отмену контекста
 		if ctx.Err() != nil {
 			return FetchResult{Error: ctx.Err()}
 		}
 
-		// Задержка перед повторной попыткой (не для первой)
+		// Задержка 100ms перед повторной попыткой
 		if attempt > 0 {
 			if !f.waitForRetry(ctx) {
 				return FetchResult{Error: ctx.Err()}
 			}
 		}
 
-		// Выполняем запрос
 		result := f.performRequest(ctx, url)
 
-		// Успех - возвращаем результат
+		// Успех — не требует retry
 		if result.Error == nil && result.StatusCode < 500 && result.StatusCode != 429 {
 			return result
 		}
 
-		// Последняя попытка или не требует retry - возвращаем как есть
 		if attempt == f.maxRetries || !f.shouldRetry(result) {
 			return result
 		}
 	}
 
-	// Недостижимый код (цикл всегда возвращает внутри)
 	return FetchResult{}
 }
 
-// shouldRetry определяет нужен ли retry для данного результата
+// shouldRetry: сетевые ошибки, 429 Too Many Requests, 5xx Server Errors
 func (f *Fetcher) shouldRetry(result FetchResult) bool {
-	// Сетевая ошибка - всегда retry
 	if result.Error != nil {
 		return true
 	}
-
-	// HTTP 429 Too Many Requests - retry
 	if result.StatusCode == 429 {
 		return true
 	}
-
-	// HTTP 5xx Server Error - retry
 	if result.StatusCode >= 500 && result.StatusCode < 600 {
 		return true
 	}
-
-	// Остальные статусы - не retry
-	// (4xx кроме 429 - это клиентские ошибки, нет смысла повторять)
 	return false
 }
 
-// performRequest выполняет один HTTP-запрос
 func (f *Fetcher) performRequest(ctx context.Context, urlStr string) FetchResult {
-	// Rate limiting перед HTTP-запросом
 	if f.rateLimiter != nil {
 		if !f.rateLimiter.Wait(ctx) {
 			return FetchResult{Error: ctx.Err()}
@@ -156,7 +136,6 @@ func (f *Fetcher) performRequest(ctx context.Context, urlStr string) FetchResult
 
 	result := FetchResult{StatusCode: resp.StatusCode}
 
-	// Читаем HTML/XML контент только для успешных ответов
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		if isTextContent(resp.Header.Get("Content-Type")) {
 			body, err := io.ReadAll(resp.Body)
@@ -169,7 +148,6 @@ func (f *Fetcher) performRequest(ctx context.Context, urlStr string) FetchResult
 	return result
 }
 
-// waitForRetry ждет 100ms перед повторной попыткой
 func (f *Fetcher) waitForRetry(ctx context.Context) bool {
 	select {
 	case <-ctx.Done():
@@ -179,17 +157,6 @@ func (f *Fetcher) waitForRetry(ctx context.Context) bool {
 	}
 }
 
-// isTextContent проверяет тип контента (HTML или XML)
 func isTextContent(contentType string) bool {
-	// Проверяем HTML
-	if strings.Contains(contentType, "text/html") {
-		return true
-	}
-
-	// Проверяем XML (различные типы)
-	if strings.Contains(contentType, "xml") {
-		return true
-	}
-
-	return false
+	return strings.Contains(contentType, "text/html") || strings.Contains(contentType, "xml")
 }

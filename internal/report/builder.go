@@ -11,7 +11,7 @@ import (
 	"code/internal/seo"
 )
 
-// Page содержит информацию о странице
+// Page содержит информацию о проанализированной странице
 type Page struct {
 	URL          string               `json:"url"`
 	Depth        int                  `json:"depth"`
@@ -32,13 +32,12 @@ type Report struct {
 	Pages       []Page `json:"pages"`
 }
 
-// Builder создает и управляет отчетом
+// Builder собирает отчёт о обходе сайта (потокобезопасно)
 type Builder struct {
 	report *Report
 	mu     sync.Mutex
 }
 
-// NewBuilder создает новый builder
 func NewBuilder(rootURL *url.URL, depth int) *Builder {
 	return &Builder{
 		report: &Report{
@@ -50,14 +49,12 @@ func NewBuilder(rootURL *url.URL, depth int) *Builder {
 	}
 }
 
-// AddPage добавляет страницу в отчет (потокобезопасно)
+// AddPage добавляет страницу в отчет
 func (rb *Builder) AddPage(page Page) {
-	// Для страниц с ошибками оставляем nil
 	if page.Error != "" {
 		page.BrokenLinks = nil
 		page.Assets = nil
 	} else {
-		// Для успешных страниц инициализируем пустыми массивами
 		if page.BrokenLinks == nil {
 			page.BrokenLinks = []checker.BrokenLink{}
 		}
@@ -71,12 +68,10 @@ func (rb *Builder) AddPage(page Page) {
 	rb.report.Pages = append(rb.report.Pages, page)
 }
 
-// Encode кодирует отчет в JSON
 func (rb *Builder) Encode(indent bool) ([]byte, error) {
 	rb.mu.Lock()
 	defer rb.mu.Unlock()
 
-	// Сортируем страницы по URL для детерминированного порядка
 	sort.SliceStable(rb.report.Pages, func(i, j int) bool {
 		return rb.report.Pages[i].URL < rb.report.Pages[j].URL
 	})
@@ -87,7 +82,6 @@ func (rb *Builder) Encode(indent bool) ([]byte, error) {
 	return json.Marshal(rb.report)
 }
 
-// SetPageStatus устанавливает статус страницы по HTTP коду
 func SetPageStatus(page *Page) {
 	if page.HTTPStatus == 0 {
 		page.Status = "error"

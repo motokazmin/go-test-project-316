@@ -22,7 +22,6 @@ type LinkChecker struct {
 	workers int
 }
 
-// NewLinkChecker создает новый checker
 func NewLinkChecker(fetcher *httputil.Fetcher, workers int) *LinkChecker {
 	return &LinkChecker{
 		fetcher: fetcher,
@@ -30,8 +29,8 @@ func NewLinkChecker(fetcher *httputil.Fetcher, workers int) *LinkChecker {
 	}
 }
 
-// CheckLinks проверяет список ссылок параллельно
-// Возвращает только битые ссылки (после всех retry)
+// CheckLinks проверяет список ссылок параллельно.
+// Возвращает только битые ссылки (после всех retry).
 func (lc *LinkChecker) CheckLinks(ctx context.Context, links []string) ([]BrokenLink, string) {
 	if len(links) == 0 {
 		return nil, time.Now().UTC().Format(time.RFC3339)
@@ -49,7 +48,6 @@ func (lc *LinkChecker) CheckLinks(ctx context.Context, links []string) ([]Broken
 			defer wg.Done()
 			defer func() { <-semaphore }()
 
-			// Проверяем ссылку с retry
 			if brokenLink, isBroken := lc.checkSingleLink(ctx, linkURL); isBroken {
 				resultChan <- brokenLink
 			}
@@ -69,17 +67,13 @@ func (lc *LinkChecker) CheckLinks(ctx context.Context, links []string) ([]Broken
 	return brokenLinks, time.Now().UTC().Format(time.RFC3339)
 }
 
-// checkSingleLink проверяет одну ссылку
-// Возвращает результат ПОСЛЕДНЕЙ попытки
 func (lc *LinkChecker) checkSingleLink(ctx context.Context, linkURL string) (BrokenLink, bool) {
 	result := lc.headRequest(ctx, linkURL)
 
-	// Ссылка работает
 	if result.StatusCode >= 200 && result.StatusCode < 400 && result.Error == nil {
 		return BrokenLink{}, false
 	}
 
-	// Ссылка битая - возвращаем результат последней попытки
 	brokenLink := BrokenLink{URL: linkURL}
 	if result.Error != nil {
 		brokenLink.Error = result.Error.Error()
@@ -90,17 +84,14 @@ func (lc *LinkChecker) checkSingleLink(ctx context.Context, linkURL string) (Bro
 	return brokenLink, true
 }
 
-// headRequest выполняет HEAD запрос с retry логикой
 func (lc *LinkChecker) headRequest(ctx context.Context, urlStr string) httputil.FetchResult {
-	maxRetries := 2 // Используем меньше retry для broken links проверки
+	maxRetries := 2
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		// Проверяем отмену контекста
 		if ctx.Err() != nil {
 			return httputil.FetchResult{Error: ctx.Err()}
 		}
 
-		// Задержка перед повторной попыткой (не для первой)
 		if attempt > 0 {
 			select {
 			case <-ctx.Done():
@@ -109,15 +100,12 @@ func (lc *LinkChecker) headRequest(ctx context.Context, urlStr string) httputil.
 			}
 		}
 
-		// Выполняем HEAD запрос
 		result := lc.performHeadRequest(ctx, urlStr)
 
-		// Успех - возвращаем результат
 		if result.Error == nil && result.StatusCode < 500 && result.StatusCode != 429 {
 			return result
 		}
 
-		// Последняя попытка или не требует retry - возвращаем как есть
 		if attempt == maxRetries || !lc.shouldRetry(result) {
 			return result
 		}
@@ -126,29 +114,20 @@ func (lc *LinkChecker) headRequest(ctx context.Context, urlStr string) httputil.
 	return httputil.FetchResult{}
 }
 
-// shouldRetry определяет нужен ли retry
 func (lc *LinkChecker) shouldRetry(result httputil.FetchResult) bool {
-	// Сетевая ошибка - retry
 	if result.Error != nil {
 		return true
 	}
-
-	// HTTP 429 Too Many Requests - retry
 	if result.StatusCode == 429 {
 		return true
 	}
-
-	// HTTP 5xx Server Error - retry
 	if result.StatusCode >= 500 && result.StatusCode < 600 {
 		return true
 	}
-
 	return false
 }
 
-// performHeadRequest выполняет один HEAD запрос
 func (lc *LinkChecker) performHeadRequest(ctx context.Context, urlStr string) httputil.FetchResult {
-	// Rate limiting
 	if rl := lc.fetcher.RateLimiter(); rl != nil {
 		if !rl.Wait(ctx) {
 			return httputil.FetchResult{Error: ctx.Err()}
@@ -158,7 +137,6 @@ func (lc *LinkChecker) performHeadRequest(ctx context.Context, urlStr string) ht
 	timeoutCtx, cancel := context.WithTimeout(ctx, lc.fetcher.Timeout())
 	defer cancel()
 
-	// Используем HEAD вместо GET
 	req, err := http.NewRequestWithContext(timeoutCtx, http.MethodHead, urlStr, nil)
 	if err != nil {
 		return httputil.FetchResult{Error: err}

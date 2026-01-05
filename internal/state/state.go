@@ -13,27 +13,24 @@ type URLWithDepth struct {
 	Depth int
 }
 
-// URLQueue управляет очередью URL для обхода
+// URLQueue — потокобезопасная очередь URL для обхода
 type URLQueue struct {
 	items []URLWithDepth
 	mu    sync.Mutex
 }
 
-// NewURLQueue создает новую очередь
 func NewURLQueue(rootURL string) *URLQueue {
 	return &URLQueue{
 		items: []URLWithDepth{{URL: rootURL, Depth: 0}},
 	}
 }
 
-// Enqueue добавляет URL в очередь
 func (q *URLQueue) Enqueue(urls []URLWithDepth) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.items = append(q.items, urls...)
 }
 
-// Dequeue извлекает следующий URL
 func (q *URLQueue) Dequeue() *URLWithDepth {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -47,41 +44,36 @@ func (q *URLQueue) Dequeue() *URLWithDepth {
 	return &item
 }
 
-// IsEmpty проверяет пуста ли очередь
 func (q *URLQueue) IsEmpty() bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	return len(q.items) == 0
 }
 
-// VisitedSet управляет множеством посещенных URL
+// VisitedSet — потокобезопасное множество посещённых URL
 type VisitedSet struct {
 	urls map[string]bool
 	mu   sync.Mutex
 }
 
-// NewVisitedSet создает новое множество
 func NewVisitedSet() *VisitedSet {
 	return &VisitedSet{
 		urls: make(map[string]bool),
 	}
 }
 
-// Add добавляет URL в множество
 func (v *VisitedSet) Add(url string) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	v.urls[url] = true
 }
 
-// Contains проверяет наличие URL
 func (v *VisitedSet) Contains(url string) bool {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	return v.urls[url]
 }
 
-// CrawlState содержит состояние процесса краулирования
 type CrawlState struct {
 	BaseURL     *url.URL
 	Queue       *URLQueue
@@ -91,7 +83,6 @@ type CrawlState struct {
 	RateLimiter *httputil.RateLimiter
 }
 
-// NewCrawlState создает новое состояние
 func NewCrawlState(rootURL *url.URL, workers int, rateLimiter *httputil.RateLimiter) *CrawlState {
 	return &CrawlState{
 		BaseURL:     rootURL,

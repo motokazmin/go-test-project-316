@@ -9,16 +9,14 @@ import (
 	"code/internal/urlutil"
 )
 
-// AssetInfo содержит информацию об ассете из HTML
 type AssetInfo struct {
 	URL       string
 	AssetType string
 }
 
-// HTMLParser отвечает за парсинг HTML
+// HTMLParser парсит HTML и извлекает ссылки и ассеты
 type HTMLParser struct{}
 
-// NewHTMLParser создает новый парсер
 func NewHTMLParser() *HTMLParser {
 	return &HTMLParser{}
 }
@@ -52,7 +50,6 @@ func (p *HTMLParser) ExtractLinks(htmlContent string, pageURL *url.URL) []string
 	return links
 }
 
-// ExtractAssets извлекает ассеты (изображения, скрипты, стили) из HTML
 func (p *HTMLParser) ExtractAssets(htmlContent string, pageURL *url.URL) []AssetInfo {
 	assets := []AssetInfo{}
 	doc, err := html.Parse(strings.NewReader(htmlContent))
@@ -65,34 +62,22 @@ func (p *HTMLParser) ExtractAssets(htmlContent string, pageURL *url.URL) []Asset
 		if n.Type == html.ElementNode {
 			switch n.Data {
 			case "img":
-				// <img src="...">
 				if src := getAttr(n, "src"); src != "" {
 					if resolved := urlutil.ResolveURL(src, pageURL); resolved != "" {
-						assets = append(assets, AssetInfo{
-							URL:       resolved,
-							AssetType: "image",
-						})
+						assets = append(assets, AssetInfo{URL: resolved, AssetType: "image"})
 					}
 				}
 			case "script":
-				// <script src="...">
 				if src := getAttr(n, "src"); src != "" {
 					if resolved := urlutil.ResolveURL(src, pageURL); resolved != "" {
-						assets = append(assets, AssetInfo{
-							URL:       resolved,
-							AssetType: "script",
-						})
+						assets = append(assets, AssetInfo{URL: resolved, AssetType: "script"})
 					}
 				}
 			case "link":
-				// <link rel="stylesheet" href="...">
 				if rel := getAttr(n, "rel"); rel == "stylesheet" {
 					if href := getAttr(n, "href"); href != "" {
 						if resolved := urlutil.ResolveURL(href, pageURL); resolved != "" {
-							assets = append(assets, AssetInfo{
-								URL:       resolved,
-								AssetType: "style",
-							})
+							assets = append(assets, AssetInfo{URL: resolved, AssetType: "style"})
 						}
 					}
 				}
@@ -108,7 +93,6 @@ func (p *HTMLParser) ExtractAssets(htmlContent string, pageURL *url.URL) []Asset
 	return assets
 }
 
-// getAttr получает значение атрибута узла
 func getAttr(n *html.Node, key string) string {
 	for _, attr := range n.Attr {
 		if attr.Key == key {

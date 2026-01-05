@@ -10,10 +10,8 @@ import (
 	"code/internal/seo"
 )
 
-// HTTPClient интерфейс для выполнения HTTP запросов
 type HTTPClient = httputil.HTTPClient
 
-// Options содержит параметры для обхода сайта
 type Options struct {
 	URL         string
 	Depth       int
@@ -26,21 +24,14 @@ type Options struct {
 	HTTPClient  HTTPClient
 }
 
-// Re-export public types from internal packages
 type (
-	// Report содержит результат обхода сайта
-	Report = report.Report
-	// Page содержит информацию о странице
-	Page = report.Page
-	// BrokenLink содержит информацию о битой ссылке
+	Report     = report.Report
+	Page       = report.Page
 	BrokenLink = checker.BrokenLink
-	// SEO содержит базовые SEO параметры страницы
-	SEO = seo.SEO
-	// Asset содержит информацию об ассете
-	Asset = checker.Asset
+	SEO        = seo.SEO
+	Asset      = checker.Asset
 )
 
-// normalizeOptions устанавливает значения по умолчанию
 func normalizeOptions(opts *Options) {
 	if opts.HTTPClient == nil {
 		opts.HTTPClient = &http.Client{}
