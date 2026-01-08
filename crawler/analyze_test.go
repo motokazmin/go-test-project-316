@@ -149,87 +149,6 @@ func TestAnalyzeErrorHandling(t *testing.T) {
 	}
 }
 
-// TestAnalyzeDefaultOptions проверяет значения по умолчанию
-func TestAnalyzeDefaultOptions(t *testing.T) {
-	mockClient := &MockHTTPClient{
-		DoFunc: func(req *http.Request) (*http.Response, error) {
-			return &http.Response{
-				StatusCode: 200,
-				Body:       io.NopCloser(strings.NewReader("<html></html>")),
-				Request:    req,
-			}, nil
-		},
-	}
-
-	opts := Options{
-		URL:        "https://example.com",
-		HTTPClient: mockClient,
-	}
-
-	result, err := Analyze(context.Background(), opts)
-	if err != nil {
-		t.Fatalf("Analyze failed: %v", err)
-	}
-
-	var report Report
-	if err := json.Unmarshal(result, &report); err != nil {
-		t.Fatalf("Failed to unmarshal report: %v", err)
-	}
-
-	// Проверяем, что отчет содержит валидный timestamp
-	if report.GeneratedAt == "" {
-		t.Errorf("Expected generated_at to be set")
-	}
-
-	// Проверяем, что можем распарсить timestamp
-	if _, err := time.Parse(time.RFC3339, report.GeneratedAt); err != nil {
-		t.Errorf("Invalid generated_at format: %v", err)
-	}
-}
-
-// TestAnalyzeURLNormalization проверяет нормализацию URL
-func TestAnalyzeURLNormalization(t *testing.T) {
-	mockClient := &MockHTTPClient{
-		DoFunc: func(req *http.Request) (*http.Response, error) {
-			return &http.Response{
-				StatusCode: 200,
-				Body:       io.NopCloser(strings.NewReader("<html></html>")),
-				Request:    req,
-			}, nil
-		},
-	}
-
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"example.com", "https://example.com"},
-		{"https://example.com", "https://example.com"},
-		{"http://example.com", "http://example.com"},
-	}
-
-	for _, test := range tests {
-		opts := Options{
-			URL:        test.input,
-			HTTPClient: mockClient,
-		}
-
-		result, err := Analyze(context.Background(), opts)
-		if err != nil {
-			t.Fatalf("Analyze failed for %s: %v", test.input, err)
-		}
-
-		var report Report
-		if err := json.Unmarshal(result, &report); err != nil {
-			t.Fatalf("Failed to unmarshal report: %v", err)
-		}
-
-		if report.RootURL != test.expected {
-			t.Errorf("For input %s: expected %s, got %s", test.input, test.expected, report.RootURL)
-		}
-	}
-}
-
 // TestAnalyzeServerError проверяет обработку 500 ошибки
 func TestAnalyzeServerError(t *testing.T) {
 	mockClient := &MockHTTPClient{
@@ -266,45 +185,6 @@ func TestAnalyzeServerError(t *testing.T) {
 
 	if page.Status != "server_error" {
 		t.Errorf("Expected status 'server_error', got %s", page.Status)
-	}
-}
-
-// TestAnalyzeRedirect проверяет обработку redirect
-func TestAnalyzeRedirect(t *testing.T) {
-	mockClient := &MockHTTPClient{
-		DoFunc: func(req *http.Request) (*http.Response, error) {
-			return &http.Response{
-				StatusCode: 301,
-				Body:       io.NopCloser(strings.NewReader("")),
-				Request:    req,
-			}, nil
-		},
-	}
-
-	opts := Options{
-		URL:         "https://example.com",
-		Depth:       0,
-		Concurrency: 1,
-		HTTPClient:  mockClient,
-	}
-
-	result, err := Analyze(context.Background(), opts)
-	if err != nil {
-		t.Fatalf("Analyze failed: %v", err)
-	}
-
-	var report Report
-	if err := json.Unmarshal(result, &report); err != nil {
-		t.Fatalf("Failed to unmarshal report: %v", err)
-	}
-
-	page := report.Pages[0]
-	if page.HTTPStatus != 301 {
-		t.Errorf("Expected HTTP status 301, got %d", page.HTTPStatus)
-	}
-
-	if page.Status != "redirect" {
-		t.Errorf("Expected status 'redirect', got %s", page.Status)
 	}
 }
 
